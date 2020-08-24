@@ -29,7 +29,7 @@ pub const MAX_MEMBERS: u32 = 16;
 ## Storage Item
 
 We will store the members of our set as the keys in one of Substrate's
-[`StorageMap`](https://substrate.dev/rustdocs/v2.0.0-rc4/frame_support/storage/trait.StorageMap.html)s. There is also
+[`StorageMap`](https://substrate.dev/rustdocs/v2.0.0-rc5/frame_support/storage/trait.StorageMap.html)s. There is also
 a recipe specifically about [using storage maps](./storage-maps.md). The storage map itself does not
 track its size internally, so we introduce a second storage value for this purpose.
 
@@ -37,7 +37,7 @@ track its size internally, so we introduce a second storage value for this purpo
 decl_storage! {
 	trait Store for Module<T: Trait> as VecMap {
 		// The set of all members.
-		Members get(fn members): map hasher(blake2_128_concat) T::AccountId => bool;
+		Members get(fn members): map hasher(blake2_128_concat) T::AccountId => ();
 		// The total number of members stored in the map.
 		// Because the map does not store its size, we must store it separately
 		MemberCount: u32;
@@ -45,8 +45,7 @@ decl_storage! {
 }
 ```
 
-As the code comment says, we will not associate any meaning with the _value_ stored in the map; we
-only care about the keys. As a convention, the value will always be `true`.
+The _value_ stored in the map is `()` because we only care about the keys.
 
 ## Adding Members
 
@@ -67,7 +66,7 @@ fn add_member(origin) -> DispatchResult {
 	ensure!(!Members::<T>::contains_key(&new_member), Error::<T>::AlreadyMember);
 
 	// Insert the new member and emit the event
-	Members::<T>::insert(&new_member, true);
+	Members::<T>::insert(&new_member, ());
 	MemberCount::put(member_count + 1); // overflow check not necessary because of maximum
 	Self::deposit_event(RawEvent::MemberAdded(new_member));
 	Ok(())
@@ -120,7 +119,7 @@ may want a `map-set`.
 ### Iteration
 
 Iterating over all items in a `map-set` is achieved by using the
-[`IterableStorageMap` trait](https://substrate.dev/rustdocs/v2.0.0-rc4/frame_support/storage/trait.IterableStorageMap.html),
+[`IterableStorageMap` trait](https://substrate.dev/rustdocs/v2.0.0-rc5/frame_support/storage/trait.IterableStorageMap.html),
 which iterates `(key, value)` pairs (although in this case, we don't care about the values). Because
 each map entry is stored as an individual trie node, iterating a map set requires a database read
 for each item. Finally, the actual processing of the items will take some time.
