@@ -8,6 +8,7 @@
 In this pallet a specific amount of funds will be slashed from an account and 
 award a specific amount of funds to said specific account.
 
+
 Slash funds:
 pub fn slash_funds(origin, to_punish: T::AccountId, collateral: BalanceOf<T>) {
             let _ = ensure_signed(origin)?;
