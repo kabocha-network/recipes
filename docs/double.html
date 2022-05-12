@@ -156,33 +156,49 @@ subset maintain an associated identifier type, this can be done in a clean way w
 <code>remove_prefix</code> api.</p>
 <pre><code class="language-rust  ignore">pub type GroupIndex = u32; // this is Encode (which is necessary for double_map)
 
-decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Dmap {
-		/// Member score (double map)
-		MemberScore get(fn member_score):
-			double_map hasher(blake2_128_concat) GroupIndex, hasher(blake2_128_concat) T::AccountId =&gt; u32;
-		/// Get group ID for member
-		GroupMembership get(fn group_membership): map hasher(blake2_128_concat) T::AccountId =&gt; GroupIndex;
-		/// For fast membership checks, see check-membership recipe for more details
-		AllMembers get(fn all_members): Vec&lt;T::AccountId&gt;;
-	}
-}
+#[pallet::storage]
+#[pallet::getter(fn member_score)]
+pub(super) type MemberScore&lt;T: Config&gt; = StorageDoubleMap&lt;
+	_,
+	Blake2_128Concat,
+	GroupIndex,
+	Blake2_128Concat,
+	T::AccountId,
+	u32,
+	ValueQuery,
+&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn group_membership)]
+pub(super) type GroupMembership&lt;T: Config&gt; =
+		StorageMap&lt;_, Blake2_128Concat, T::AccountId, GroupIndex, ValueQuery&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn all_members)]
+pub(super) type AllMembers&lt;T: Config&gt; = StorageValue&lt;_, Vec&lt;T::AccountId&gt;, ValueQuery&gt;;
 </code></pre>
 <p>For the purposes of this example, store the scores of each member in a map that associates this
 <code>u32</code> value with two keys: (1) a <code>GroupIndex</code> identifier, and (2) the member's <code>AccountId</code>. This
 allows for efficient removal of all values associated with a specific <code>GroupIndex</code> identifier.</p>
-<pre><code class="language-rust  ignore">fn remove_group_score(origin, group: GroupIndex) -&gt; DispatchResult {
-	let member = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn remove_group_score(
+	origin: OriginFor&lt;T&gt;,
+	group: GroupIndex,
+	) -&gt; DispatchResultWithPostInfo {
+		let member = ensure_signed(origin)?;
 
-	let group_id = &lt;GroupMembership&lt;T&gt;&gt;::get(member);
-	// check that the member is in the group
-	ensure!(group_id == group, &quot;member isn't in the group, can't remove it&quot;);
+		let group_id = &lt;GroupMembership&lt;T&gt;&gt;::get(member);
+		// check that the member is in the group
+		ensure!(
+			group_id == group,
+			&quot;member isn't in the group, can't remove it&quot;
+		);
 
-	// remove all group members from MemberScore at once
-	&lt;MemberScore&lt;T&gt;&gt;::remove_prefix(&amp;group_id);
+		// remove all group members from MemberScore at once
+		&lt;MemberScore&lt;T&gt;&gt;::remove_prefix(&amp;group_id);
 
-	Self::deposit_event(RawEvent::RemoveGroup(group_id));
-	Ok(())
+		Self::deposit_event(Event::RemoveGroup(group_id));
+		Ok(().into())
 }
 </code></pre>
 

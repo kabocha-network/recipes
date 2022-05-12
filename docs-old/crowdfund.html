@@ -164,10 +164,10 @@ dissolves it.</p>
 crowdfund pallet will depend on a notion of
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.Currency.html"><code>Currency</code></a>, and three
 <a href="./constants.html">configuration constants</a>.</p>
-<pre><code class="language-rust  ignore">#[pallet::config]
+<pre><code class="language-rust  ignore">/// The pallet's configuration trait
 pub trait Config: frame_system::Config {
 	/// The ubiquious Event type
-	type Event: From&lt;Event&lt;Self&gt;&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
+	type Event: From&lt;Event&lt;Self&gt;&gt; + Into&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
 
 	/// The currency in which the crowdfunds will be denominated
 	type Currency: ReservableCurrency&lt;Self::AccountId&gt;;
@@ -189,16 +189,16 @@ pub trait Config: frame_system::Config {
 <pre><code class="language-rust  ignore">#[derive(Encode, Decode, Default, PartialEq, Eq)]
 #[cfg_attr(feature = &quot;std&quot;, derive(Debug))]
 pub struct FundInfo&lt;AccountId, Balance, BlockNumber&gt; {
-	/// The account that will receive the funds if the campaign is successful
-	pub beneficiary: AccountId,
+	/// The account that will recieve the funds if the campaign is successful
+	beneficiary: AccountId,
 	/// The amount of deposit placed
-	pub deposit: Balance,
+	deposit: Balance,
 	/// The total amount raised
-	pub raised: Balance,
+	raised: Balance,
 	/// Block number after which funding must have succeeded
-	pub end: BlockNumber,
+	end: BlockNumber,
 	/// Upper bound on `raised`
-	pub goal: Balance,
+	goal: Balance,
 }
 </code></pre>
 <p>In addition to this <code>FundInfo</code> struct, we also introduce an index type to track the number of funds
@@ -212,13 +212,19 @@ type FundInfoOf&lt;T&gt; = FundInfo&lt;AccountIdOf&lt;T&gt;, BalanceOf&lt;T&gt;,
 <h2 id="storage"><a class="header" href="#storage">Storage</a></h2>
 <p>The pallet has two storage items declared the usual way using <code>decl_storage!</code>. The first is the
 index that tracks the number of funds, and the second is a mapping from index to <code>FundInfo</code>.</p>
-<pre><code class="language-rust  ignore">#[pallet::storage]
-#[pallet::getter(fn funds)]
-pub(super) type Funds&lt;T: Config&gt; = StorageMap&lt;_, Blake2_128Concat, FundIndex, FundInfoOf&lt;T&gt;, OptionQuery&gt;;
+<pre><code class="language-rust  ignore">decl_storage! {
+	trait Store for Module&lt;T: Config&gt; as ChildTrie {
+		/// Info on all of the funds.
+		Funds get(fn funds):
+			map hasher(blake2_128_concat) FundIndex =&gt; Option&lt;FundInfoOf&lt;T&gt;&gt;;
 
-#[pallet::storage]
-#[pallet::getter(fn fund_count)]
-pub(super) type FundCount&lt;T: Config&gt; = StorageValue&lt;_, FundIndex, ValueQuery&gt;;
+		/// The total number of funds that have so far been allocated.
+		FundCount get(fn fund_count): FundIndex;
+
+		// Additional information is stored in a child trie. See the helper
+		// functions in the impl&lt;T: Config&gt; Module&lt;T&gt; block below
+	}
+}
 </code></pre>
 <p>This pallet also stores the data about which users have contributed and how many funds they
 contributed in a <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/storage/child/index.html">child trie</a>. This
@@ -279,8 +285,8 @@ these cleanup methods before each other.</p>
 <pre><code class="language-rust  ignore">/// Dispense a payment to the beneficiary of a successful crowdfund.
 /// The beneficiary receives the contributed funds and the caller receives
 /// the deposit as a reward to incentivize clearing settled crowdfunds out of storage.
-#[pallet::weight(10_000)]
-pub fn dispense(origin: OriginFor&lt;T&gt;, index: FundIndex) -&gt; DispatchResultWithPostInfo {
+#[weight = 10_000]
+fn dispense(origin, index: FundIndex) {
 	let caller = ensure_signed(origin)?;
 
 	let fund = Self::funds(index).ok_or(Error::&lt;T&gt;::InvalidIndex)?;
@@ -296,36 +302,20 @@ pub fn dispense(origin: OriginFor&lt;T&gt;, index: FundIndex) -&gt; DispatchResu
 	let account = Self::fund_account_id(index);
 
 	// Beneficiary collects the contributed funds
-	let _ = T::Currency::resolve_creating(
-		&amp;fund.beneficiary,
-		T::Currency::withdraw(
-			&amp;account,
-			fund.raised,
-			WithdrawReasons::TRANSFER,
-			ExistenceRequirement::AllowDeath,
-		)?,
-	);
+	let _ = T::Currency::resolve_creating(&amp;fund.beneficiary, T::Currency::withdraw(
+		&amp;account,
+		fund.raised,
+		WithdrawReasons::from(WithdrawReason::Transfer),
+		ExistenceRequirement::AllowDeath,
+	)?);
 
 	// Caller collects the deposit
-	let _ = T::Currency::resolve_creating(
-		&amp;caller,
-		T::Currency::withdraw(
-			&amp;account,
-			fund.deposit,
-			WithdrawReasons::TRANSFER,
-			ExistenceRequirement::AllowDeath,
-		)?,
-	);
-
-	// Remove the fund info from storage
-	&lt;Funds&lt;T&gt;&gt;::remove(index);
-	// Remove all the contributor info from storage in a single write.
-	// This is possible thanks to the use of a child tree.
-	Self::crowdfund_kill(index);
-
-	Self::deposit_event(Event::Dispensed(index, now, caller));
-	Ok(().into())
-}
+	let _ = T::Currency::resolve_creating(&amp;caller, T::Currency::withdraw(
+		&amp;account,
+		fund.deposit,
+		WithdrawReasons::from(WithdrawReason::Transfer),
+		ExistenceRequirement::AllowDeath,
+	)?);
 </code></pre>
 <p>This pallet also uses the Currency
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.Imbalance.html"><code>Imbalance</code></a> trait as discussed in

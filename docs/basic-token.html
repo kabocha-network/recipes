@@ -162,40 +162,41 @@ account that holds tokens appears as a key in that map and its value is the numb
 holds.</p>
 <p>The next two storage items set the total supply of the token and keep track of whether the token has
 been initialized yet.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Token {
-		pub Balances get(get_balance): map hasher(blake2_128_concat) T::AccountId =&gt; u64;
+<pre><code class="language-rust  ignore">#[pallet::storage]
+	#[pallet::getter(fn get_balance)]
+	pub(super) type Balances&lt;T: Config&gt; =
+		StorageMap&lt;_, Blake2_128Concat, T::AccountId, u64, ValueQuery&gt;;
 
-		pub TotalSupply get(total_supply): u64 = 21000000;
-
-		Init get(is_init): bool;
-	}
+#[pallet::type_value]
+	pub(super) fn TotalSupplyDefaultValue&lt;T: Config&gt;() -&gt; u64 {
+		21000000
 }
+
+#[pallet::storage]
+	#[pallet::getter(fn is_init)]
+	pub(super) type Init&lt;T: Config&gt; = StorageValue&lt;_, bool, ValueQuery&gt;;
 </code></pre>
 <p>Because users can influence the keys in our storage map, we've chosen the <code>blake2_128_concat</code> hasher
 as described in the recipe on <a href="./storage-maps.html">storage maps</a>s.</p>
 <h2 id="events-and-errors"><a class="header" href="#events-and-errors">Events and Errors</a></h2>
 <p>The pallet defines events and errors for common lifecycle events such as successful and failed
 transfers, and successful and failed initialization.</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event&lt;T&gt;
-	where
-		AccountId = &lt;T as frame_system::Config&gt;::AccountId,
-	{
+<pre><code class="language-rust  ignore">#[pallet::event]
+	#[pallet::metadata(T::AccountId = &quot;AccountId&quot;)]
+	#[pallet::generate_deposit(pub (super) fn deposit_event)]
+	pub enum Event&lt;T: Config&gt; {
 		/// Token was initialized by user
-		Initialized(AccountId),
+		Initialized(T::AccountId),
 		/// Tokens successfully transferred between users
-		Transfer(AccountId, AccountId, u64), // (from, to, value)
-	}
-);
+		Transfer(T::AccountId, T::AccountId, u64), // (from, to, value)
+}
 
-decl_error! {
-	pub enum Error for Module&lt;T: Config&gt; {
+#[pallet::error]
+	pub enum Error&lt;T&gt; {
 		/// Attempted to initialize the token after it had already been initialized.
 		AlreadyInitialized,
 		/// Attempted to transfer more funds than were available
 		InsufficientFunds,
-	}
 }
 </code></pre>
 <h2 id="initializing-the-token"><a class="header" href="#initializing-the-token">Initializing the Token</a></h2>
@@ -204,14 +205,15 @@ initialize a token including genesis config, claims process, lockdrop, and many 
 will use a simple process where the first user to call the <code>init</code> function receives all of the
 funds. The total supply is hard-coded in the pallet in a fairly naive way: It is specified as the
 default value in the <code>decl_storage!</code> block.</p>
-<pre><code class="language-rust ignore">fn init(origin) -&gt; DispatchResult {
-	let sender = ensure_signed(origin)?;
-	ensure!(!Self::is_init(), &lt;Error&lt;T&gt;&gt;::AlreadyInitialized);
+<pre><code class="language-rust ignore">#[pallet::weight(10_000)]
+		pub fn init(_origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
+			let sender = ensure_signed(_origin)?;
+			ensure!(!Self::is_init(), &lt;Error&lt;T&gt;&gt;::AlreadyInitialized);
 
-	&lt;Balances&lt;T&gt;&gt;::insert(sender, Self::total_supply());
+			&lt;Balances&lt;T&gt;&gt;::insert(sender, Self::total_supply());
 
-	Init::put(true);
-	Ok(())
+			Init::&lt;T&gt;::put(true);
+			Ok(().into())
 }
 </code></pre>
 <p>As usual, we first check for preconditions. In this case that means making sure that the token is
@@ -222,21 +224,30 @@ and the amount of tokens to transfer as parameters.</p>
 <p>We again check for error conditions before mutating storage. In this case it is <em>not</em> necessary to
 check whether the token has been initialized. If it has not, nobody has any funds and the transfer
 will simply fail with <code>InsufficientFunds</code>.</p>
-<pre><code class="language-rust  ignore">fn transfer(_origin, to: T::AccountId, value: u64) -&gt; DispatchResult {
-	let sender = ensure_signed(_origin)?;
-	let sender_balance = Self::get_balance(&amp;sender);
-	let receiver_balance = Self::get_balance(&amp;to);
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+		pub fn transfer(
+			_origin: OriginFor&lt;T&gt;,
+			to: T::AccountId,
+			value: u64,
+		) -&gt; DispatchResultWithPostInfo {
+			let sender = ensure_signed(_origin)?;
+			let sender_balance = Self::get_balance(&amp;sender);
+			let receiver_balance = Self::get_balance(&amp;to);
 
-	// Calculate new balances
-	let updated_from_balance = sender_balance.checked_sub(value).ok_or(&lt;Error&lt;T&gt;&gt;::InsufficientFunds)?;
-	let updated_to_balance = receiver_balance.checked_add(value).expect(&quot;Entire supply fits in u64; qed&quot;);
+			// Calculate new balances
+			let updated_from_balance = sender_balance
+				.checked_sub(value)
+				.ok_or(&lt;Error&lt;T&gt;&gt;::InsufficientFunds)?;
+			let updated_to_balance = receiver_balance
+				.checked_add(value)
+				.expect(&quot;Entire supply fits in u64; qed&quot;);
 
-	// Write new balances to storage
-	&lt;Balances&lt;T&gt;&gt;::insert(&amp;sender, updated_from_balance);
-	&lt;Balances&lt;T&gt;&gt;::insert(&amp;to, updated_to_balance);
+			// Write new balances to storage
+			&lt;Balances&lt;T&gt;&gt;::insert(&amp;sender, updated_from_balance);
+			&lt;Balances&lt;T&gt;&gt;::insert(&amp;to, updated_to_balance);
 
-	Self::deposit_event(RawEvent::Transfer(sender, to, value));
-	Ok(())
+			Self::deposit_event(Event::Transfer(sender, to, value));
+			Ok(().into())
 }
 </code></pre>
 <h2 id="dont-panic"><a class="header" href="#dont-panic">Don't Panic!</a></h2>

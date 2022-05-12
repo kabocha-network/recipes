@@ -203,7 +203,8 @@ sources is not necessary in practice.</p>
 <h2 id="consuming-randomness"><a class="header" href="#consuming-randomness">Consuming Randomness</a></h2>
 <p>Calling the randomness source from Rust code is straightforward. Our <code>consume_randomness</code> extrinsic
 demonstrates consuming the raw random seed as well as a context-augmented random value. Try submitting the same extrinsic twice in the same block. The raw seed should be the same each time.</p>
-<pre><code class="language-rust  ignore">fn consume_randomness(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn consume_randomness(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let _ = ensure_signed(origin)?;
 
 	// Using a subject is recommended to prevent accidental re-use of the seed
@@ -214,8 +215,7 @@ demonstrates consuming the raw random seed as well as a context-augmented random
 	let random_result = T::RandomnessSource::random(&amp;subject);
 
 	Self::deposit_event(Event::RandomnessConsumed(random_seed, random_result));
-	Ok(())
-}
+	Ok(().into())
 }
 </code></pre>
 <h2 id="collective-coin-flipping"><a class="header" href="#collective-coin-flipping">Collective Coin Flipping</a></h2>

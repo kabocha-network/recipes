@@ -209,17 +209,18 @@ shall be covered later in the section on <a href="./weights.html">Weights</a>. F
 the recipes pallets, we will simply use the default weight as we have done here.</p>
 <h2 id="inside-a-dispatchable-call"><a class="header" href="#inside-a-dispatchable-call">Inside a Dispatchable Call</a></h2>
 <p>Let's take a closer look at our dispatchable call.</p>
-<pre><code class="language-rust  ignore">pub fn say_hello(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn say_hello(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	// Ensure that the caller is a regular keypair account
 	let caller = ensure_signed(origin)?;
 
 	// Print a message
 	print(&quot;Hello World&quot;);
-	// Inspecting variables
+	// Inspecting a variable as well
 	debug::info!(&quot;Request sent by: {:?}&quot;, caller);
 
 	// Indicate that this call succeeded
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>This function essentially does three things. First, it uses the

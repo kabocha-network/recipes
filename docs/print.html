@@ -357,17 +357,18 @@ shall be covered later in the section on <a href="./weights.html">Weights</a>. F
 the recipes pallets, we will simply use the default weight as we have done here.</p>
 <h2 id="inside-a-dispatchable-call"><a class="header" href="#inside-a-dispatchable-call">Inside a Dispatchable Call</a></h2>
 <p>Let's take a closer look at our dispatchable call.</p>
-<pre><code class="language-rust  ignore">pub fn say_hello(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn say_hello(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	// Ensure that the caller is a regular keypair account
 	let caller = ensure_signed(origin)?;
 
 	// Print a message
 	print(&quot;Hello World&quot;);
-	// Inspecting variables
+	// Inspecting a variable as well
 	debug::info!(&quot;Request sent by: {:?}&quot;, caller);
 
 	// Indicate that this call succeeded
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>This function essentially does three things. First, it uses the
@@ -446,46 +447,47 @@ syntax is a bit complex, it is the same every time. If you are a skilled Rust pr
 recognize this as a series of <a href="https://doc.rust-lang.org/book/ch10-02-traits.html">trait bounds</a>. If
 you don't recognize this feature of Rust yet, don't worry; it is the same every time, so you can
 just copy it and move on.</p>
-<pre><code class="language-rust  ignore">pub trait Config: frame_system::Config {
-	type Event: From&lt;Event&gt; + Into&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
+<pre><code class="language-rust  ignore">#[pallet::config]
+pub trait Config: frame_system::Config {
+	/// Because this pallet emits events, it depends on the runtime's definition of an event.
+	type Event: From&lt;Event&lt;Self&gt;&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
 }
 </code></pre>
-<p>Next we have to add a line inside of the <code>decl_module!</code> macro which generates the <code>deposit_event</code>
+<p>Next we have to add a line of the <code>#[pallet::generate_deposit(pub(super) fn deposit_event)]</code> macro which generates the <code>deposit_event</code>
 function we'll use later when emitting our events. Even experienced Rust programmers will not
 recognize this syntax because it is unique to this macro. Just copy it each time.</p>
-<pre><code class="language-rust  ignore">decl_module! {
-	pub struct Module&lt;T: Config&gt; for enum Call where origin: T::Origin {
-
-		// This line is new
-		fn deposit_event() = default;
-
-		// --snip--
-	}
+<pre><code class="language-rust  ignore">#[pallet::event]
+#[pallet::metadata(T::AccountId = &quot;AccountId&quot;)]
+#[pallet::generate_deposit(pub(super) fn deposit_event)]
+pub enum Event&lt;T: Config&gt; {
+	/// Event documentation should end with an array that provides descriptive names for event
+	/// parameters. [something, who]
+	EmitInput(u32),
 }
 </code></pre>
 <h2 id="declaring-events"><a class="header" href="#declaring-events">Declaring Events</a></h2>
 <p>To declare an event, use the
-<a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/macro.decl_event.html"><code>decl_event!</code> macro</a>. Like any rust
+<a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/macro.decl_event.html"><code>#[pallet::event]</code> macro</a>. Like any rust
 enum, Events have names and can optionally carry data with them. The syntax is slightly different
 depending on whether the events carry data of primitive types, or generic types from the pallet's
 configuration trait. These two techniques are demonstrated in the <code>simple-event</code> and <code>generic-event</code>
 pallets respectively.</p>
 <h3 id="simple-events"><a class="header" href="#simple-events">Simple Events</a></h3>
 <p>The simplest example of an event uses the following syntax</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event {
-		EmitInput(u32),
-	}
-);
+<pre><code class="language-rust  ignore">#[pallet::event]
+#[pallet::metadata(u32 = &quot;Metadata&quot;)]
+pub enum Event&lt;T: Config&gt; {
+    /// Set a value.
+    ValueSet(u32, T::AccountId),
+}
 </code></pre>
 <h3 id="events-with-generic-types"><a class="header" href="#events-with-generic-types">Events with Generic Types</a></h3>
 <p>Sometimes, events might contain types from the pallet's Configuration Trait. In this case, it is necessary to
 specify additional syntax:</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event&lt;T&gt; where AccountId = &lt;T as frame_system::Config&gt;::AccountId {
-		EmitInput(AccountId, u32),
-	}
-);
+<pre><code class="language-rust  ignore">#[pallet::event]
+pub enum Event&lt;T: Config&gt; {
+	EmitInput(u32),
+}
 </code></pre>
 <p>This example also demonstrates how the <code>where</code> clause can be used to specify type aliasing for more
 readable code.</p>
@@ -502,7 +504,7 @@ will have no events emitted.</p>
 <h3 id="events-with-generic-types-1"><a class="header" href="#events-with-generic-types-1">Events with Generic Types</a></h3>
 <p>The syntax for <code>deposit_event</code> now takes the <code>RawEvent</code> type because it is generic over the pallet's
 configuration trait.</p>
-<pre><code class="language-rust  ignore">Self::deposit_event(RawEvent::EmitInput(user, new_number));
+<pre><code class="language-rust  ignore">#[pallet::generate_deposit(pub(super) fn deposit_event)]
 </code></pre>
 <h2 id="constructing-the-runtime"><a class="header" href="#constructing-the-runtime">Constructing the Runtime</a></h2>
 <p>For the first time in the recipes, our pallet has an associated type in its configuration trait. We
@@ -539,11 +541,10 @@ to store a mapping from keys to values, similar to Rust's own
 <a href="https://doc.rust-lang.org/std/collections/struct.HashMap.html"><code>HashMap</code></a>.</p>
 <h2 id="declaring-a-storagemap"><a class="header" href="#declaring-a-storagemap">Declaring a <code>StorageMap</code></a></h2>
 <p>We declare a single storage map with the following syntax:</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as SimpleMap {
-		SimpleMap get(fn simple_map): map hasher(blake2_128_concat) T::AccountId =&gt; u32;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn simple_map)]
+	pub(super) type SimpleMap&lt;T: Config&gt; =
+	StorageMap&lt;_, Blake2_128Concat, T::AccountId, u32, ValueQuery&gt;;
 </code></pre>
 <p>Much of this should look familiar to you from storage values. Reading the line from left to right we
 have:</p>
@@ -612,48 +613,71 @@ use a storage map.</p>
 </a></p>
 <p>Calls to runtime storage have an associated cost and developers should strive to minimize the number
 of calls.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as StorageCache {
-		// copy type
-		SomeCopyValue get(fn some_copy_value): u32;
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn some_copy_value)]
+pub(super) type SomeCopyValue&lt;T: Config&gt; = StorageValue&lt;_, u32, ValueQuery&gt;;
 
-		// clone type
-		KingMember get(fn king_member): T::AccountId;
-		GroupMembers get(fn group_members): Vec&lt;T::AccountId&gt;;
-	}
-}
+#[pallet::storage]
+#[pallet::getter(fn king_member)]
+pub(super) type KingMember&lt;T: Config&gt; = StorageValue&lt;_, T::AccountId, ValueQuery&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn group_members)]
+pub(super) type GroupMembers&lt;T: Config&gt; = StorageValue&lt;_, Vec&lt;T::AccountId&gt;, ValueQuery&gt;;
+
 </code></pre>
 <h2 id="copy-types"><a class="header" href="#copy-types">Copy Types</a></h2>
 <p>For <a href="https://doc.rust-lang.org/std/marker/trait.Copy.html"><code>Copy</code></a> types, it is easy to reuse
 previous storage calls by simply reusing the value, which is automatically cloned upon reuse. In the
 code below, the second call is unnecessary:</p>
-<pre><code class="language-rust  ignore">fn increase_value_no_cache(origin, some_val: u32) -&gt; DispatchResult {
-	let _ = ensure_signed(origin)?;
-	let original_call = &lt;SomeCopyValue&gt;::get();
-	let some_calculation = original_call.checked_add(some_val).ok_or(&quot;addition overflowed1&quot;)?;
-	// this next storage call is unnecessary and is wasteful
-	let unnecessary_call = &lt;SomeCopyValue&gt;::get();
-	// should've just used `original_call` here because u32 is copy
-	let another_calculation = some_calculation.checked_add(unnecessary_call).ok_or(&quot;addition overflowed2&quot;)?;
-	&lt;SomeCopyValue&gt;::put(another_calculation);
-	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
-	Self::deposit_event(RawEvent::InefficientValueChange(another_calculation, now));
-	Ok(())
+<pre><code class="language-rust  ignore">#[pallet::call]
+impl&lt;T: Config&gt; Pallet&lt;T&gt; {
+	///  (Copy) inefficient way of updating value in storage
+	///
+	/// storage value -&gt; storage_value * 2 + input_val
+	#[pallet::weight(10_000)]
+	pub fn increase_value_no_cache(
+		origin: OriginFor&lt;T&gt;,
+		some_val: u32,
+	) -&gt; DispatchResultWithPostInfo {
+		let _ = ensure_signed(origin)?;
+		let original_call = &lt;SomeCopyValue&lt;T&gt;&gt;::get();
+		let some_calculation = original_call
+			.checked_add(some_val)
+			.ok_or(&quot;addition overflowed1&quot;)?;
+		// this next storage call is unnecessary and is wasteful
+		let unnecessary_call = &lt;SomeCopyValue&lt;T&gt;&gt;::get();
+		// should've just used `original_call` here because u32 is copy
+		let another_calculation = some_calculation
+			.checked_add(unnecessary_call)
+			.ok_or(&quot;addition overflowed2&quot;)?;
+		&lt;SomeCopyValue&lt;T&gt;&gt;::put(another_calculation);
+		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+		Self::deposit_event(Event::InefficientValueChange(another_calculation, now));
+		Ok(().into())
 }
 </code></pre>
 <p>Instead, the initial call value should be reused. In this example, the <code>SomeCopyValue</code> value is
 <a href="https://doc.rust-lang.org/std/marker/trait.Copy.html"><code>Copy</code></a> so we should prefer the following
 code without the unnecessary second call to storage:</p>
-<pre><code class="language-rust  ignore">fn increase_value_w_copy(origin, some_val: u32) -&gt; DispatchResult {
-	let _ = ensure_signed(origin)?;
-	let original_call = &lt;SomeCopyValue&gt;::get();
-	let some_calculation = original_call.checked_add(some_val).ok_or(&quot;addition overflowed1&quot;)?;
-	// uses the original_call because u32 is copy
-	let another_calculation = some_calculation.checked_add(original_call).ok_or(&quot;addition overflowed2&quot;)?;
-	&lt;SomeCopyValue&gt;::put(another_calculation);
-	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
-	Self::deposit_event(RawEvent::BetterValueChange(another_calculation, now));
-	Ok(())
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn increase_value_w_copy(
+	origin: OriginFor&lt;T&gt;,
+	some_val: u32,
+	) -&gt; DispatchResultWithPostInfo {
+		let _ = ensure_signed(origin)?;
+		let original_call = &lt;SomeCopyValue&lt;T&gt;&gt;::get();
+		let some_calculation = original_call
+			.checked_add(some_val)
+			.ok_or(&quot;addition overflowed1&quot;)?;
+		// uses the original_call because u32 is copy
+		let another_calculation = some_calculation
+			.checked_add(original_call)
+			.ok_or(&quot;addition overflowed2&quot;)?;
+		&lt;SomeCopyValue&lt;T&gt;&gt;::put(another_calculation);
+		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+		Self::deposit_event(Event::BetterValueChange(another_calculation, now));
+		Ok(().into())
 }
 </code></pre>
 <h2 id="clone-types"><a class="header" href="#clone-types">Clone Types</a></h2>
@@ -667,23 +691,30 @@ storage.</p>
 </ol>
 <p>The first implementation makes a second unnecessary call to runtime storage instead of cloning the
 call for <code>existing_key</code>:</p>
-<pre><code class="language-rust  ignore">fn swap_king_no_cache(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn swap_king_no_cache(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let new_king = ensure_signed(origin)?;
 	let existing_king = &lt;KingMember&lt;T&gt;&gt;::get();
 
 	// only places a new account if
 	// (1) the existing account is not a member &amp;&amp;
 	// (2) the new account is a member
-	ensure!(!Self::is_member(&amp;existing_king), &quot;current king is a member so maintains priority&quot;);
-	ensure!(Self::is_member(&amp;new_king), &quot;new king is not a member so doesn't get priority&quot;);
+	ensure!(
+		!Self::is_member(&amp;existing_king),
+		&quot;current king is a member so maintains priority&quot;
+	);
+	ensure!(
+		Self::is_member(&amp;new_king),
+		&quot;new king is not a member so doesn't get priority&quot;
+	);
 
 	// BAD (unnecessary) storage call
 	let old_king = &lt;KingMember&lt;T&gt;&gt;::get();
 	// place new king
 	&lt;KingMember&lt;T&gt;&gt;::put(new_king.clone());
 
-	Self::deposit_event(RawEvent::InefficientKingSwap(old_king, new_king));
-	Ok(())
+	Self::deposit_event(Event::InefficientKingSwap(old_king, new_king));
+	Ok(().into())
 }
 </code></pre>
 <p>If the <code>existing_key</code> is used without a <code>clone</code> in the event emission instead of <code>old_king</code>, then
@@ -708,7 +739,8 @@ error: Could not compile `storage-cache`.
 To learn more, run the command again with --verbose.
 </code></pre>
 <p>Fixing this only requires cloning the original value before it is moved:</p>
-<pre><code class="language-rust  ignore">fn swap_king_with_cache(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn swap_king_with_cache(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let new_king = ensure_signed(origin)?;
 	let existing_king = &lt;KingMember&lt;T&gt;&gt;::get();
 	// prefer to clone previous call rather than repeat call unnecessarily
@@ -717,15 +749,21 @@ To learn more, run the command again with --verbose.
 	// only places a new account if
 	// (1) the existing account is not a member &amp;&amp;
 	// (2) the new account is a member
-	ensure!(!Self::is_member(&amp;existing_king), &quot;current king is a member so maintains priority&quot;);
-	ensure!(Self::is_member(&amp;new_king), &quot;new king is not a member so doesn't get priority&quot;);
+	ensure!(
+		!Self::is_member(&amp;existing_king),
+		&quot;current king is a member so maintains priority&quot;
+	);
+	ensure!(
+		Self::is_member(&amp;new_king),
+		&quot;new king is not a member so doesn't get priority&quot;
+	);
 
 	// &lt;no (unnecessary) storage call here&gt;
 	// place new king
 	&lt;KingMember&lt;T&gt;&gt;::put(new_king.clone());
 
-	Self::deposit_event(RawEvent::BetterKingSwap(old_king, new_king));
-	Ok(())
+	Self::deposit_event(Event::BetterKingSwap(old_king, new_king));
+	Ok(().into())
 }
 </code></pre>
 <p>Not all types implement <a href="https://doc.rust-lang.org/std/marker/trait.Copy.html"><code>Copy</code></a> or
@@ -757,12 +795,9 @@ pub const MAX_MEMBERS: usize = 16;
 <a href="https://doc.rust-lang.org/std/vec/struct.Vec.html"><code>Vec</code></a>. A <code>Vec</code> is a collection of elements that
 is ordered and may contain duplicates. Because the <code>Vec</code> provides more functionality than our set
 needs, we are able to build a set from the <code>Vec</code>. We declare our single storage item as so</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as VecSet {
-		// The set of all members. Stored as a single vec
-		Members get(fn members): Vec&lt;T::AccountId&gt;;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn members)]
+pub(super) type Members&lt;T: Config&gt; = StorageValue&lt;_, Vec&lt;T::AccountId&gt;, ValueQuery&gt;;
 </code></pre>
 <p>In order to use the <code>Vec</code> successfully as a set, we will need to manually ensure that no duplicate
 entries are added. To ensure reasonable performance, we will enforce that the <code>Vec</code> always remains
@@ -773,25 +808,29 @@ sorted. This allows for quickly determining whether an item is present using a
 not already a member and the membership limit has not been reached. We check for these two
 conditions first, and then insert the new member only after we are sure it is safe to do so. This is
 an example of the mnemonic idiom, &quot;<strong>verify first write last</strong>&quot;.</p>
-<pre><code class="language-rust  ignore">pub fn add_member(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn add_member(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let new_member = ensure_signed(origin)?;
 
 	let mut members = Members::&lt;T&gt;::get();
-	ensure!(members.len() &lt; MAX_MEMBERS, Error::&lt;T&gt;::MembershipLimitReached);
+	ensure!(
+		members.len() &lt; MAX_MEMBERS,
+		Error::&lt;T&gt;::MembershipLimitReached
+		);
 
-	// We don't want to add duplicate members, so we check whether the potential new
-	// member is already present in the list. Because the list is always ordered, we can
-	// leverage the binary search which makes this check O(log n).
-	match members.binary_search(&amp;new_member) {
-		// If the search succeeds, the caller is already a member, so just return
-		Ok(_) =&gt; Err(Error::&lt;T&gt;::AlreadyMember.into()),
-		// If the search fails, the caller is not a member and we learned the index where
-		// they should be inserted
-		Err(index) =&gt; {
-			members.insert(index, new_member.clone());
-			Members::&lt;T&gt;::put(members);
-			Self::deposit_event(RawEvent::MemberAdded(new_member));
-			Ok(())
+		// We don't want to add duplicate members, so we check whether the potential new
+		// member is already present in the list. Because the list is always ordered, we can
+		// leverage the binary search which makes this check O(log n).
+		match members.binary_search(&amp;new_member) {
+			// If the search succeeds, the caller is already a member, so just return
+			Ok(_) =&gt; Err(Error::&lt;T&gt;::AlreadyMember.into()),
+			// If the search fails, the caller is not a member and we learned the index where
+			// they should be inserted
+			Err(index) =&gt; {
+				members.insert(index, new_member.clone());
+				Members::&lt;T&gt;::put(members);
+				Self::deposit_event(Event::MemberAdded(new_member));
+				Ok(().into())
 		}
 	}
 }
@@ -804,20 +843,21 @@ maintaining a sorted <code>Vec</code>.</p>
 <p>Removing a member is straightforward. We begin by looking for the caller in the list. If not
 present, there is no work to be done. If the caller is present, the search algorithm returns her
 index, and she can be removed.</p>
-<pre><code class="language-rust  ignore">fn remove_member(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn remove_member(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let old_member = ensure_signed(origin)?;
 
 	let mut members = Members::&lt;T&gt;::get();
 
-	// We have to find out where, in the sorted vec the member is, if anywhere.
+	// We have to find out if the member exists in the sorted vec, and, if so, where.
 	match members.binary_search(&amp;old_member) {
 		// If the search succeeds, the caller is a member, so remove her
 		Ok(index) =&gt; {
 			members.remove(index);
 			Members::&lt;T&gt;::put(members);
-			Self::deposit_event(RawEvent::MemberRemoved(old_member));
-			Ok(())
-		},
+			Self::deposit_event(Event::MemberRemoved(old_member));
+			Ok(().into())
+		}
 		// If the search fails, the caller is not a member, so just return
 		Err(_) =&gt; Err(Error::&lt;T&gt;::NotMember.into()),
 	}
@@ -876,54 +916,42 @@ pub const MAX_MEMBERS: u32 = 16;
 <a href="https://substrate.dev/rustdocs/latest/frame_support/storage/trait.StorageMap.html"><code>StorageMap</code></a>s. There is also
 a recipe specifically about <a href="./storage-maps.html">using storage maps</a>. The storage map itself does not
 track its size internally, so we introduce a second storage value for this purpose.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as VecMap {
-		// The set of all members.
-		Members get(fn members): map hasher(blake2_128_concat) T::AccountId =&gt; ();
-		// The total number of members stored in the map.
-		// Because the map does not store its size, we must store it separately
-		MemberCount: u32;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn members)]
+pub(super) type Members&lt;T: Config&gt; =
+StorageMap&lt;_, Blake2_128Concat, T::AccountId, (), ValueQuery&gt;;
+
+#[pallet::storage]
+pub(super) type MemberCount&lt;T&gt; = StorageValue&lt;_, u32, ValueQuery&gt;;
 </code></pre>
 <p>The <em>value</em> stored in the map is <code>()</code> because we only care about the keys.</p>
 <h2 id="adding-members-1"><a class="header" href="#adding-members-1">Adding Members</a></h2>
 <p>Any user may join the membership set by calling the <code>add_member</code> dispatchable, so long as they are
 not already a member and the membership limit has not been reached. We check for these two
 conditions first, and then insert the new member only after we are sure it is safe to do so.</p>
-<pre><code class="language-rust  ignore">fn add_member(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn add_member(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let new_member = ensure_signed(origin)?;
 
-	let member_count = MemberCount::get();
-	ensure!(member_count &lt; MAX_MEMBERS, Error::&lt;T&gt;::MembershipLimitReached);
-
-	// We don't want to add duplicate members, so we check whether the potential new
-	// member is already present in the list. Because the membership is stored as a hash
-	// map this check is constant time O(1)
-	ensure!(!Members::&lt;T&gt;::contains_key(&amp;new_member), Error::&lt;T&gt;::AlreadyMember);
-
-	// Insert the new member and emit the event
-	Members::&lt;T&gt;::insert(&amp;new_member, ());
-	MemberCount::put(member_count + 1); // overflow check not necessary because of maximum
-	Self::deposit_event(RawEvent::MemberAdded(new_member));
-	Ok(())
-}
+	let member_count = MemberCount::&lt;T&gt;::get();
+	ensure!(
+		member_count &lt; MAX_MEMBERS,
+		Error::&lt;T&gt;::MembershipLimitReached
+	);
 </code></pre>
 <p>When we successfully add a new member, we also manually update the size of the set.</p>
 <h2 id="removing-a-member-1"><a class="header" href="#removing-a-member-1">Removing a Member</a></h2>
 <p>Removing a member is straightforward. We begin by looking for the caller in the list. If not
 present, there is no work to be done. If the caller is present, we simply remove them and update the
 size of the set.</p>
-<pre><code class="language-rust  ignore">fn remove_member(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn remove_member(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let old_member = ensure_signed(origin)?;
 
-	ensure!(Members::&lt;T&gt;::contains_key(&amp;old_member), Error::&lt;T&gt;::NotMember);
-
-	Members::&lt;T&gt;::remove(&amp;old_member);
-	MemberCount::mutate(|v| *v -= 1);
-	Self::deposit_event(RawEvent::MemberRemoved(old_member));
-	Ok(())
-}
+	ensure!(
+		Members::&lt;T&gt;::contains_key(&amp;old_member),
+		Error::&lt;T&gt;::NotMember
+	);
 </code></pre>
 <h2 id="performance-1"><a class="header" href="#performance-1">Performance</a></h2>
 <p>Now that we have built our set, let's analyze its performance in some common operations.</p>
@@ -968,33 +996,49 @@ subset maintain an associated identifier type, this can be done in a clean way w
 <code>remove_prefix</code> api.</p>
 <pre><code class="language-rust  ignore">pub type GroupIndex = u32; // this is Encode (which is necessary for double_map)
 
-decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Dmap {
-		/// Member score (double map)
-		MemberScore get(fn member_score):
-			double_map hasher(blake2_128_concat) GroupIndex, hasher(blake2_128_concat) T::AccountId =&gt; u32;
-		/// Get group ID for member
-		GroupMembership get(fn group_membership): map hasher(blake2_128_concat) T::AccountId =&gt; GroupIndex;
-		/// For fast membership checks, see check-membership recipe for more details
-		AllMembers get(fn all_members): Vec&lt;T::AccountId&gt;;
-	}
-}
+#[pallet::storage]
+#[pallet::getter(fn member_score)]
+pub(super) type MemberScore&lt;T: Config&gt; = StorageDoubleMap&lt;
+	_,
+	Blake2_128Concat,
+	GroupIndex,
+	Blake2_128Concat,
+	T::AccountId,
+	u32,
+	ValueQuery,
+&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn group_membership)]
+pub(super) type GroupMembership&lt;T: Config&gt; =
+		StorageMap&lt;_, Blake2_128Concat, T::AccountId, GroupIndex, ValueQuery&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn all_members)]
+pub(super) type AllMembers&lt;T: Config&gt; = StorageValue&lt;_, Vec&lt;T::AccountId&gt;, ValueQuery&gt;;
 </code></pre>
 <p>For the purposes of this example, store the scores of each member in a map that associates this
 <code>u32</code> value with two keys: (1) a <code>GroupIndex</code> identifier, and (2) the member's <code>AccountId</code>. This
 allows for efficient removal of all values associated with a specific <code>GroupIndex</code> identifier.</p>
-<pre><code class="language-rust  ignore">fn remove_group_score(origin, group: GroupIndex) -&gt; DispatchResult {
-	let member = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn remove_group_score(
+	origin: OriginFor&lt;T&gt;,
+	group: GroupIndex,
+	) -&gt; DispatchResultWithPostInfo {
+		let member = ensure_signed(origin)?;
 
-	let group_id = &lt;GroupMembership&lt;T&gt;&gt;::get(member);
-	// check that the member is in the group
-	ensure!(group_id == group, &quot;member isn't in the group, can't remove it&quot;);
+		let group_id = &lt;GroupMembership&lt;T&gt;&gt;::get(member);
+		// check that the member is in the group
+		ensure!(
+			group_id == group,
+			&quot;member isn't in the group, can't remove it&quot;
+		);
 
-	// remove all group members from MemberScore at once
-	&lt;MemberScore&lt;T&gt;&gt;::remove_prefix(&amp;group_id);
+		// remove all group members from MemberScore at once
+		&lt;MemberScore&lt;T&gt;&gt;::remove_prefix(&amp;group_id);
 
-	Self::deposit_event(RawEvent::RemoveGroup(group_id));
-	Ok(())
+		Self::deposit_event(Event::RemoveGroup(group_id));
+		Ok(().into())
 }
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="using-and-storing-structs"><a class="header" href="#using-and-storing-structs">Using and Storing Structs</a></h1>
@@ -1051,26 +1095,33 @@ type. When using a generic struct, we must supply all of the generic type parame
 shows how to supply thos parameters when you have a type alias (like we do for <code>InnerThing</code>) as well
 as when you don't. Whether to include the type alias is a matter of style and taste, but it is
 generally preferred when the entire type exceeds the preferred line length.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as NestedStructs {
-		InnerThingsByNumbers get(fn inner_things_by_numbers):
-			map hasher(blake2_128_concat) u32 =&gt; InnerThingOf&lt;T&gt;;
-		SuperThingsBySuperNumbers get(fn super_things_by_super_numbers):
-			map hasher(blake2_256) u32 =&gt; SuperThing&lt;T::Hash, T::Balance&gt;;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn inner_things_by_numbers)]
+pub(super) type InnerThingsByNumbers&lt;T&gt; =
+		StorageMap&lt;_, Blake2_128Concat, u32, InnerThingOf&lt;T&gt;, ValueQuery&gt;;
+
+#[pallet::storage]
+#[pallet::getter(fn super_things_by_super_numbers)]
+pub(super) type SuperThingsBySuperNumbers&lt;T: Config&gt; =
+		StorageMap&lt;_, Blake2_128Concat, u32, SuperThing&lt;T::Hash, T::Balance&gt;, ValueQuery&gt;;
 </code></pre>
 <p>Interacting with the storage maps is now exactly as it was when we didn't use any custom structs</p>
-<pre><code class="language-rust  ignore">fn insert_inner_thing(origin, number: u32, hash: T::Hash, balance: T::Balance) -&gt; DispatchResult {
-	let _ = ensure_signed(origin)?;
-	let thing = InnerThing {
-					number,
-					hash,
-					balance,
-				};
-	&lt;InnerThingsByNumbers&lt;T&gt;&gt;::insert(number, thing);
-	Self::deposit_event(RawEvent::NewInnerThing(number, hash, balance));
-	Ok(())
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn insert_inner_thing(
+	origin: OriginFor&lt;T&gt;,
+	number: u32,
+	hash: T::Hash,
+	balance: T::Balance,
+	) -&gt; DispatchResultWithPostInfo {
+		let _ = ensure_signed(origin)?;
+		let thing = InnerThing {
+			number,
+			hash,
+			balance,
+		};
+		&lt;InnerThingsByNumbers&lt;T&gt;&gt;::insert(number, thing);
+		Self::deposit_event(Event::NewInnerThing(number, hash, balance));
+		Ok(().into())
 }
 </code></pre>
 <h2 id="nested-structs"><a class="header" href="#nested-structs">Nested Structs</a></h2>
@@ -1337,40 +1388,41 @@ account that holds tokens appears as a key in that map and its value is the numb
 holds.</p>
 <p>The next two storage items set the total supply of the token and keep track of whether the token has
 been initialized yet.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Token {
-		pub Balances get(get_balance): map hasher(blake2_128_concat) T::AccountId =&gt; u64;
+<pre><code class="language-rust  ignore">#[pallet::storage]
+	#[pallet::getter(fn get_balance)]
+	pub(super) type Balances&lt;T: Config&gt; =
+		StorageMap&lt;_, Blake2_128Concat, T::AccountId, u64, ValueQuery&gt;;
 
-		pub TotalSupply get(total_supply): u64 = 21000000;
-
-		Init get(is_init): bool;
-	}
+#[pallet::type_value]
+	pub(super) fn TotalSupplyDefaultValue&lt;T: Config&gt;() -&gt; u64 {
+		21000000
 }
+
+#[pallet::storage]
+	#[pallet::getter(fn is_init)]
+	pub(super) type Init&lt;T: Config&gt; = StorageValue&lt;_, bool, ValueQuery&gt;;
 </code></pre>
 <p>Because users can influence the keys in our storage map, we've chosen the <code>blake2_128_concat</code> hasher
 as described in the recipe on <a href="./storage-maps.html">storage maps</a>s.</p>
 <h2 id="events-and-errors"><a class="header" href="#events-and-errors">Events and Errors</a></h2>
 <p>The pallet defines events and errors for common lifecycle events such as successful and failed
 transfers, and successful and failed initialization.</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event&lt;T&gt;
-	where
-		AccountId = &lt;T as frame_system::Config&gt;::AccountId,
-	{
+<pre><code class="language-rust  ignore">#[pallet::event]
+	#[pallet::metadata(T::AccountId = &quot;AccountId&quot;)]
+	#[pallet::generate_deposit(pub (super) fn deposit_event)]
+	pub enum Event&lt;T: Config&gt; {
 		/// Token was initialized by user
-		Initialized(AccountId),
+		Initialized(T::AccountId),
 		/// Tokens successfully transferred between users
-		Transfer(AccountId, AccountId, u64), // (from, to, value)
-	}
-);
+		Transfer(T::AccountId, T::AccountId, u64), // (from, to, value)
+}
 
-decl_error! {
-	pub enum Error for Module&lt;T: Config&gt; {
+#[pallet::error]
+	pub enum Error&lt;T&gt; {
 		/// Attempted to initialize the token after it had already been initialized.
 		AlreadyInitialized,
 		/// Attempted to transfer more funds than were available
 		InsufficientFunds,
-	}
 }
 </code></pre>
 <h2 id="initializing-the-token"><a class="header" href="#initializing-the-token">Initializing the Token</a></h2>
@@ -1379,14 +1431,15 @@ initialize a token including genesis config, claims process, lockdrop, and many 
 will use a simple process where the first user to call the <code>init</code> function receives all of the
 funds. The total supply is hard-coded in the pallet in a fairly naive way: It is specified as the
 default value in the <code>decl_storage!</code> block.</p>
-<pre><code class="language-rust ignore">fn init(origin) -&gt; DispatchResult {
-	let sender = ensure_signed(origin)?;
-	ensure!(!Self::is_init(), &lt;Error&lt;T&gt;&gt;::AlreadyInitialized);
+<pre><code class="language-rust ignore">#[pallet::weight(10_000)]
+		pub fn init(_origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
+			let sender = ensure_signed(_origin)?;
+			ensure!(!Self::is_init(), &lt;Error&lt;T&gt;&gt;::AlreadyInitialized);
 
-	&lt;Balances&lt;T&gt;&gt;::insert(sender, Self::total_supply());
+			&lt;Balances&lt;T&gt;&gt;::insert(sender, Self::total_supply());
 
-	Init::put(true);
-	Ok(())
+			Init::&lt;T&gt;::put(true);
+			Ok(().into())
 }
 </code></pre>
 <p>As usual, we first check for preconditions. In this case that means making sure that the token is
@@ -1397,21 +1450,30 @@ and the amount of tokens to transfer as parameters.</p>
 <p>We again check for error conditions before mutating storage. In this case it is <em>not</em> necessary to
 check whether the token has been initialized. If it has not, nobody has any funds and the transfer
 will simply fail with <code>InsufficientFunds</code>.</p>
-<pre><code class="language-rust  ignore">fn transfer(_origin, to: T::AccountId, value: u64) -&gt; DispatchResult {
-	let sender = ensure_signed(_origin)?;
-	let sender_balance = Self::get_balance(&amp;sender);
-	let receiver_balance = Self::get_balance(&amp;to);
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+		pub fn transfer(
+			_origin: OriginFor&lt;T&gt;,
+			to: T::AccountId,
+			value: u64,
+		) -&gt; DispatchResultWithPostInfo {
+			let sender = ensure_signed(_origin)?;
+			let sender_balance = Self::get_balance(&amp;sender);
+			let receiver_balance = Self::get_balance(&amp;to);
 
-	// Calculate new balances
-	let updated_from_balance = sender_balance.checked_sub(value).ok_or(&lt;Error&lt;T&gt;&gt;::InsufficientFunds)?;
-	let updated_to_balance = receiver_balance.checked_add(value).expect(&quot;Entire supply fits in u64; qed&quot;);
+			// Calculate new balances
+			let updated_from_balance = sender_balance
+				.checked_sub(value)
+				.ok_or(&lt;Error&lt;T&gt;&gt;::InsufficientFunds)?;
+			let updated_to_balance = receiver_balance
+				.checked_add(value)
+				.expect(&quot;Entire supply fits in u64; qed&quot;);
 
-	// Write new balances to storage
-	&lt;Balances&lt;T&gt;&gt;::insert(&amp;sender, updated_from_balance);
-	&lt;Balances&lt;T&gt;&gt;::insert(&amp;to, updated_to_balance);
+			// Write new balances to storage
+			&lt;Balances&lt;T&gt;&gt;::insert(&amp;sender, updated_from_balance);
+			&lt;Balances&lt;T&gt;&gt;::insert(&amp;to, updated_to_balance);
 
-	Self::deposit_event(RawEvent::Transfer(sender, to, value));
-	Ok(())
+			Self::deposit_event(Event::Transfer(sender, to, value));
+			Ok(().into())
 }
 </code></pre>
 <h2 id="dont-panic"><a class="header" href="#dont-panic">Don't Panic!</a></h2>
@@ -1442,34 +1504,34 @@ the <code>Get&lt;T&gt;</code> syntax for any type <code>T</code>.</p>
 }
 </code></pre>
 <p>In order to make these constants and their values appear in the runtime metadata, it is necessary to
-declare them with the <code>const</code> syntax in the <code>decl_module!</code> block. Usually constants are declared at
+declare them with the <code>const</code> syntax. Usually constants are declared at
 the top of this block, right after <code>fn deposit_event</code>.</p>
-<pre><code class="language-rust  ignore">decl_module! {
-	pub struct Module&lt;T: Config&gt; for enum Call where origin: T::Origin {
-		fn deposit_event() = default;
+<pre><code class="language-rust  ignore">#[pallet::config]
+pub trait Config: frame_system::Config {
+	type Event: From&lt;Event&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
 
-		const MaxAddend: u32 = T::MaxAddend::get();
+	/// Maximum amount added per invocation
+	type MaxAddend: Get&lt;u32&gt;;
 
-		const ClearFrequency: T::BlockNumber = T::ClearFrequency::get();
-
-		// --snip--
-	}
+	/// Frequency with which the stored value is deleted
+	type ClearFrequency: Get&lt;Self::BlockNumber&gt;;
 }
 </code></pre>
 <p>This example manipulates a single value in storage declared as <code>SingleValue</code>.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		SingleValue get(fn single_value): u32;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn single_value)]
+pub(super) type SingleValue&lt;T: Config&gt; = StorageValue&lt;_, u32, ValueQuery&gt;;
 </code></pre>
 <p><code>SingleValue</code> is set to <code>0</code> every <code>ClearFrequency</code> number of blocks in the <code>on_finalize</code> function
 that runs at the end of blocks execution.</p>
-<pre><code class="language-rust  ignore">fn on_finalize(n: T::BlockNumber) {
-	if (n % T::ClearFrequency::get()).is_zero() {
-		let c_val = &lt;SingleValue&gt;::get();
-		&lt;SingleValue&gt;::put(0u32);
-		Self::deposit_event(Event::Cleared(c_val));
+<pre><code class="language-rust  ignore">#[pallet::hooks]
+impl&lt;T: Config&gt; Hooks&lt;T::BlockNumber&gt; for Pallet&lt;T&gt; {
+	fn on_finalize(n: T::BlockNumber) {
+		if (n % T::ClearFrequency::get()).is_zero() {
+			let c_val = SingleValue::&lt;T&gt;::get();
+			SingleValue::&lt;T&gt;::put(0u32);
+			Self::deposit_event(Event::Cleared(c_val));
+		}
 	}
 }
 </code></pre>
@@ -1477,21 +1539,30 @@ that runs at the end of blocks execution.</p>
 each call adds less than <code>MaxAddend</code>. <em>There is no anti-sybil mechanism so a user could just split a
 larger request into multiple smaller requests to overcome the <code>MaxAddend</code></em>, but overflow is still
 handled appropriately.</p>
-<pre><code class="language-rust  ignore">fn add_value(origin, val_to_add: u32) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn add_value(origin: OriginFor&lt;T&gt;, val_to_add: u32) -&gt; DispatchResultWithPostInfo {
 	let _ = ensure_signed(origin)?;
-	ensure!(val_to_add &lt;= T::MaxAddend::get(), &quot;value must be &lt;= maximum add amount constant&quot;);
+	ensure!(
+		val_to_add &lt;= T::MaxAddend::get(),
+		&quot;value must be &lt;= maximum add amount constant&quot;
+	);
 
 	// previous value got
-	let c_val = &lt;SingleValue&gt;::get();
+	let c_val = SingleValue::&lt;T&gt;::get();
 
 	// checks for overflow when new value added
 	let result = match c_val.checked_add(val_to_add) {
 		Some(r) =&gt; r,
-		None =&gt; return Err(DispatchError::Other(&quot;Addition overflowed&quot;)),
+		None =&gt; {
+			return Err(DispatchErrorWithPostInfo {
+				post_info: PostDispatchInfo::from(()),
+				error: DispatchError::Other(&quot;Addition overflowed&quot;),
+			})
+		}
 	};
-	&lt;SingleValue&gt;::put(result);
+	SingleValue::&lt;T&gt;::put(result);
 	Self::deposit_event(Event::Added(c_val, val_to_add, result));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>In more complex patterns, the constant value may be used as a static, base value that is scaled by a
@@ -1511,10 +1582,15 @@ implementation.</p>
 	pub const ClearFrequency: u32 = 10;
 }
 
-impl constant_config::Config for Runtime {
-	type Event = Event;
-	type MaxAddend = MaxAddend;
-	type ClearFrequency = ClearFrequency;
+#[pallet::config]
+pub trait Config: frame_system::Config {
+	type Event: From&lt;Event&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
+
+	/// Maximum amount added per invocation
+	type MaxAddend: Get&lt;u32&gt;;
+
+	/// Frequency with which the stored value is deleted
+	type ClearFrequency: Get&lt;Self::BlockNumber&gt;;
 }
 <span class="boring">}
 </span></code></pre></pre>
@@ -1540,10 +1616,10 @@ dissolves it.</p>
 crowdfund pallet will depend on a notion of
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.Currency.html"><code>Currency</code></a>, and three
 <a href="./constants.html">configuration constants</a>.</p>
-<pre><code class="language-rust  ignore">/// The pallet's configuration trait
+<pre><code class="language-rust  ignore">#[pallet::config]
 pub trait Config: frame_system::Config {
 	/// The ubiquious Event type
-	type Event: From&lt;Event&lt;Self&gt;&gt; + Into&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
+	type Event: From&lt;Event&lt;Self&gt;&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
 
 	/// The currency in which the crowdfunds will be denominated
 	type Currency: ReservableCurrency&lt;Self::AccountId&gt;;
@@ -1565,16 +1641,16 @@ pub trait Config: frame_system::Config {
 <pre><code class="language-rust  ignore">#[derive(Encode, Decode, Default, PartialEq, Eq)]
 #[cfg_attr(feature = &quot;std&quot;, derive(Debug))]
 pub struct FundInfo&lt;AccountId, Balance, BlockNumber&gt; {
-	/// The account that will recieve the funds if the campaign is successful
-	beneficiary: AccountId,
+	/// The account that will receive the funds if the campaign is successful
+	pub beneficiary: AccountId,
 	/// The amount of deposit placed
-	deposit: Balance,
+	pub deposit: Balance,
 	/// The total amount raised
-	raised: Balance,
+	pub raised: Balance,
 	/// Block number after which funding must have succeeded
-	end: BlockNumber,
+	pub end: BlockNumber,
 	/// Upper bound on `raised`
-	goal: Balance,
+	pub goal: Balance,
 }
 </code></pre>
 <p>In addition to this <code>FundInfo</code> struct, we also introduce an index type to track the number of funds
@@ -1588,19 +1664,13 @@ type FundInfoOf&lt;T&gt; = FundInfo&lt;AccountIdOf&lt;T&gt;, BalanceOf&lt;T&gt;,
 <h2 id="storage"><a class="header" href="#storage">Storage</a></h2>
 <p>The pallet has two storage items declared the usual way using <code>decl_storage!</code>. The first is the
 index that tracks the number of funds, and the second is a mapping from index to <code>FundInfo</code>.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as ChildTrie {
-		/// Info on all of the funds.
-		Funds get(fn funds):
-			map hasher(blake2_128_concat) FundIndex =&gt; Option&lt;FundInfoOf&lt;T&gt;&gt;;
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn funds)]
+pub(super) type Funds&lt;T: Config&gt; = StorageMap&lt;_, Blake2_128Concat, FundIndex, FundInfoOf&lt;T&gt;, OptionQuery&gt;;
 
-		/// The total number of funds that have so far been allocated.
-		FundCount get(fn fund_count): FundIndex;
-
-		// Additional information is stored in a child trie. See the helper
-		// functions in the impl&lt;T: Config&gt; Module&lt;T&gt; block below
-	}
-}
+#[pallet::storage]
+#[pallet::getter(fn fund_count)]
+pub(super) type FundCount&lt;T: Config&gt; = StorageValue&lt;_, FundIndex, ValueQuery&gt;;
 </code></pre>
 <p>This pallet also stores the data about which users have contributed and how many funds they
 contributed in a <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/storage/child/index.html">child trie</a>. This
@@ -1661,8 +1731,8 @@ these cleanup methods before each other.</p>
 <pre><code class="language-rust  ignore">/// Dispense a payment to the beneficiary of a successful crowdfund.
 /// The beneficiary receives the contributed funds and the caller receives
 /// the deposit as a reward to incentivize clearing settled crowdfunds out of storage.
-#[weight = 10_000]
-fn dispense(origin, index: FundIndex) {
+#[pallet::weight(10_000)]
+pub fn dispense(origin: OriginFor&lt;T&gt;, index: FundIndex) -&gt; DispatchResultWithPostInfo {
 	let caller = ensure_signed(origin)?;
 
 	let fund = Self::funds(index).ok_or(Error::&lt;T&gt;::InvalidIndex)?;
@@ -1678,20 +1748,36 @@ fn dispense(origin, index: FundIndex) {
 	let account = Self::fund_account_id(index);
 
 	// Beneficiary collects the contributed funds
-	let _ = T::Currency::resolve_creating(&amp;fund.beneficiary, T::Currency::withdraw(
-		&amp;account,
-		fund.raised,
-		WithdrawReasons::from(WithdrawReason::Transfer),
-		ExistenceRequirement::AllowDeath,
-	)?);
+	let _ = T::Currency::resolve_creating(
+		&amp;fund.beneficiary,
+		T::Currency::withdraw(
+			&amp;account,
+			fund.raised,
+			WithdrawReasons::TRANSFER,
+			ExistenceRequirement::AllowDeath,
+		)?,
+	);
 
 	// Caller collects the deposit
-	let _ = T::Currency::resolve_creating(&amp;caller, T::Currency::withdraw(
-		&amp;account,
-		fund.deposit,
-		WithdrawReasons::from(WithdrawReason::Transfer),
-		ExistenceRequirement::AllowDeath,
-	)?);
+	let _ = T::Currency::resolve_creating(
+		&amp;caller,
+		T::Currency::withdraw(
+			&amp;account,
+			fund.deposit,
+			WithdrawReasons::TRANSFER,
+			ExistenceRequirement::AllowDeath,
+		)?,
+	);
+
+	// Remove the fund info from storage
+	&lt;Funds&lt;T&gt;&gt;::remove(index);
+	// Remove all the contributor info from storage in a single write.
+	// This is possible thanks to the use of a child tree.
+	Self::crowdfund_kill(index);
+
+	Self::deposit_event(Event::Dispensed(index, now, caller));
+	Ok(().into())
+}
 </code></pre>
 <p>This pallet also uses the Currency
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.Imbalance.html"><code>Imbalance</code></a> trait as discussed in
@@ -1962,16 +2048,18 @@ impl&lt;T: Config&gt; Module&lt;T&gt; {
 <h2 id="donations"><a class="header" href="#donations">Donations</a></h2>
 <p>The first and perhaps more familiar way is through charitable donations. Donations can be made
 through a standard <code>donate</code> extrinsic which accepts the amount to be donated as a parameter.</p>
-<pre><code class="language-rust  ignore">fn donate(
-		origin,
-		amount: BalanceOf&lt;T&gt;
-) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::call]
+impl&lt;T: Config&gt; Pallet&lt;T&gt; {
+	/// Donate some funds to the charity
+	#[pallet::weight(10_000)]
+	pub fn donate(origin: OriginFor&lt;T&gt;, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 		let donor = ensure_signed(origin)?;
 
-		let _ = T::Currency::transfer(&amp;donor, &amp;Self::account_id(), amount, AllowDeath);
+		T::Currency::transfer(&amp;donor, &amp;Self::account_id(), amount, AllowDeath)
+			.map_err(|_| DispatchError::Other(&quot;Can't make donation&quot;))?;
 
-		Self::deposit_event(RawEvent::DonationReceived(donor, amount, Self::pot()));
-		Ok(())
+			Self::deposit_event(Event::DonationReceived(donor, amount, Self::pot()));
+			Ok(().into())
 }
 </code></pre>
 <h2 id="imbalances"><a class="header" href="#imbalances">Imbalances</a></h2>
@@ -2062,18 +2150,23 @@ between 0 and 1 inclusive, but <em>not</em> numbers with whole parts like 2.718 
 <p>To begin we declare the storage item that will hold our accumulated product. You can see that the
 trait provides a handy function for getting the identity value which we use to set the default
 storage value to <code>1</code>.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		// --snip--
-
-		/// Permill accumulator, value starts at 1 (multiplicative identity)
-		PermillAccumulator get(fn permill_value): Permill = Permill::one();
-	}
+<pre><code class="language-rust  ignore">#[pallet::type_value]
+pub(super) fn PermillAccumulatorDefaultValue&lt;T: Config&gt;() -&gt; Permill {
+	Permill::one()
 }
+
+#[pallet::storage]
+#[pallet::getter(fn permill_value)]
+pub(super) type PermillAccumulator&lt;T: Config&gt; =
+	StorageValue&lt;_, Permill, ValueQuery, PermillAccumulatorDefaultValue&lt;T&gt;&gt;;
 </code></pre>
 <p>The only extrinsic for this Permill accumulator is the one that allows users to submit new <code>Permill</code>
 values to get multiplied into the accumulator.</p>
-<pre><code class="language-rust  ignore">fn update_permill(origin, new_factor: Permill) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn update_permill(
+	origin: OriginFor&lt;T&gt;,
+	new_factor: Permill,
+) -&gt; DispatchResultWithPostInfo {
 	ensure_signed(origin)?;
 
 	let old_accumulated = Self::permill_value();
@@ -2083,11 +2176,11 @@ values to get multiplied into the accumulator.</p>
 	let new_product = old_accumulated.saturating_mul(new_factor);
 
 	// Write the new value to storage
-	PermillAccumulator::put(new_product);
+	PermillAccumulator::&lt;T&gt;::put(new_product);
 
 	// Emit event
 	Self::deposit_event(Event::PermillUpdated(new_factor, new_product));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>The code of this extrinsic largely speaks for itself. One thing to take particular note of is that
@@ -2113,32 +2206,38 @@ fixed-point arithmetic, like ours does, it is advisable to keep your data in sub
 <p>We're able to use <code>U16F16</code> as a storage item type because it, and the other substrate-fixed types,
 implements the parity scale codec.</p>
 </blockquote>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		// --snip--
-
-		/// Substrate-fixed accumulator, value starts at 1 (multiplicative identity)
-		FixedAccumulator get(fn fixed_value): U16F16 = U16F16::from_num(1);
-	}
+<pre><code class="language-rust  ignore">#[pallet::type_value]
+pub(super) fn FixedAccumulatorDefaultValue&lt;T: Config&gt;() -&gt; U16F16 {
+	U16F16::from_num(1)
 }
+
+#[pallet::storage]
+#[pallet::getter(fn fixed_value)]
+pub(super) type FixedAccumulator&lt;T: Config&gt; =
+	StorageValue&lt;_, U16F16, ValueQuery, FixedAccumulatorDefaultValue&lt;T&gt;&gt;;
 </code></pre>
 <p>Next we implement the extrinsic that allows users to update the accumulator by multiplying in a new
 value.</p>
-<pre><code class="language-rust  ignore">fn update_fixed(origin, new_factor: U16F16) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn update_fixed(
+	origin: OriginFor&lt;T&gt;,
+	new_factor: U16F16,
+) -&gt; DispatchResultWithPostInfo {
 	ensure_signed(origin)?;
 
 	let old_accumulated = Self::fixed_value();
 
 	// Multiply, handling overflow
-	let new_product = old_accumulated.checked_mul(new_factor)
+	let new_product = old_accumulated
+		.checked_mul(new_factor)
 		.ok_or(Error::&lt;T&gt;::Overflow)?;
 
 	// Write the new value to storage
-	FixedAccumulator::put(new_product);
+	FixedAccumulator::&lt;T&gt;::put(new_product);
 
 	// Emit event
 	Self::deposit_event(Event::FixedUpdated(new_factor, new_product));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>This extrinsic is quite similar to the <code>Permill</code> version with one notable difference. Because
@@ -2180,48 +2279,51 @@ It takes a value and moves all the bits to the left. In this case we start with 
 move it 16 bits to the left. This is because Rust interprets <code>1</code> as a regular <code>u32</code> value and puts
 the <code>1</code> in the far right place value. But because we're treating this <code>u32</code> specially, we need to
 shift that bit to the middle just left of the imaginary radix point.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		// --snip--
-
-		/// Manual accumulator, value starts at 1 (multiplicative identity)
-		ManualAccumulator get(fn manual_value): u32 = 1 &lt;&lt; 16;
-	}
+<pre><code class="language-rust  ignore">#[pallet::type_value]
+pub(super) fn ManualAccumulatorDefaultValue&lt;T: Config&gt;() -&gt; u32 {
+	1 &lt;&lt; 16
 }
+#[pallet::storage]
+#[pallet::getter(fn manual_value)]
+pub(super) type ManualAccumulator&lt;T: Config&gt; =
+	StorageValue&lt;_, u32, ValueQuery, ManualAccumulatorDefaultValue&lt;T&gt;&gt;;
 </code></pre>
 <p>The extrinsic to multiply a new factor into the accumulator follows the same general flow as in the
 other two implementations. In this case, there are more intermediate values calculated, and more
 comments explaining the bit-shifting operations. In the function body most intermediate values are
 held in <code>u64</code> variables. This is because when you multiply two 32-bit numbers, you can end up with
 as much as 64 bits in the product.</p>
-<pre><code class="language-rust  ignore">fn update_manual(origin, new_factor: u32) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn update_manual(origin: OriginFor&lt;T&gt;, new_factor: u32) -&gt; DispatchResultWithPostInfo {
 	ensure_signed(origin)?;
 
 	// To ensure we don't overflow unnecessarily, the values are cast up to u64 before multiplying.
 	// This intermediate format has 48 integer positions and 16 fractional.
-	let old_accumulated : u64 = Self::manual_value() as u64;
-	let new_factor_u64 : u64 = new_factor as u64;
+	let old_accumulated: u64 = Self::manual_value() as u64;
+	let new_factor_u64: u64 = new_factor as u64;
 
 	// Perform the multiplication on the u64 values
 	// This intermediate format has 32 integer positions and 32 fractional.
-	let raw_product : u64 = old_accumulated * new_factor_u64;
+	let raw_product: u64 = old_accumulated * new_factor_u64;
 
 	// Right shift to restore the convention that 16 bits are fractional.
 	// This is a lossy conversion.
 	// This intermediate format has 48 integer positions and 16 fractional.
-	let shifted_product : u64 = raw_product &gt;&gt; 16;
+	let shifted_product: u64 = raw_product &gt;&gt; 16;
 
 	// Ensure that the product fits in the u32, and error if it doesn't
 	if shifted_product &gt; (u32::max_value() as u64) {
-		return Err(Error::&lt;T&gt;::Overflow.into())
+		return Err(Error::&lt;T&gt;::Overflow.into());
 	}
 
+	let final_product = shifted_product as u32;
+
 	// Write the new value to storage
-	ManualAccumulator::put(shifted_product as u32);
+	ManualAccumulator::&lt;T&gt;::put(final_product);
 
 	// Emit event
-	Self::deposit_event(Event::ManualUpdated(new_factor, shifted_product as u32));
-	Ok(())
+	Self::deposit_event(Event::ManualUpdated(new_factor, final_product));
+	Ok(().into())
 }
 </code></pre>
 <p>As mentioned above, when you multiply two 32-bit numbers, you can end up with as much as 64 bits in
@@ -2255,54 +2357,55 @@ example.</p>
 <p>The only storage item needed is a tracker of the account's balance. In order to focus on the
 fixed-point- and interest-related topics, this pallet does not actually interface with a <code>Currency</code>.
 Instead we just allow anyone to &quot;deposit&quot; or &quot;withdraw&quot; funds with no source or destination.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		// --snip--
-
-		/// Balance for the discrete interest account
-		DiscreteAccount get(fn discrete_account): u64;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn discrete_account)]
+	pub(super) type DiscreteAccount&lt;T: Config&gt; = StorageValue&lt;_, u64, ValueQuery&gt;;
 </code></pre>
 <p>There are two extrinsics associated with the discrete interest account. The <code>deposit_discrete</code>
 extrinsic is shown here, and the <code>withdraw_discrete</code> extrinsic is nearly identical. Check it out in
 the kitchen.</p>
-<pre><code class="language-rust  ignore">fn deposit_discrete(origin, val_to_add: u64) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn deposit_discrete(
+	origin: OriginFor&lt;T&gt;,
+	val_to_add: u64,
+) -&gt; DispatchResultWithPostInfo {
 	ensure_signed(origin)?;
 
-	let old_value = DiscreteAccount::get();
+	let old_value = DiscreteAccount::&lt;T&gt;::get();
 
 	// Update storage for discrete account
-	DiscreteAccount::put(old_value + val_to_add);
+	DiscreteAccount::&lt;T&gt;::put(old_value + val_to_add);
 
 	// Emit event
 	Self::deposit_event(Event::DepositedDiscrete(val_to_add));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>The flow of these deposit and withdraw extrinsics is entirely straight-forward. They each perform a
 simple addition or substraction from the stored value, and they have nothing to do with interest.</p>
 <p>Because the interest is paid discretely every ten blocks it can be handled independently of deposits
 and withdrawals. The interest calculation happens automatically in the <code>on_finalize</code> block.</p>
-<pre><code class="language-rust  ignore">fn on_finalize(n: T::BlockNumber) {
-	// Apply newly-accrued discrete interest every ten blocks
-	if (n % 10.into()).is_zero() {
+<pre><code class="language-rust  ignore">#[pallet::hooks]
+impl&lt;T: Config&gt; Hooks&lt;T::BlockNumber&gt; for Pallet&lt;T&gt; {
+	fn on_finalize(n: T::BlockNumber) {
+		// Apply newly-accrued discrete interest every ten blocks
+		if (n % 10u32.into()).is_zero() {
+			// Calculate interest Interest = principal * rate * time
+			// We can use the `*` operator for multiplying a `Percent` by a u64
+			// because `Percent` implements the trait Mul&lt;u64&gt;
+			let interest = Self::discrete_interest_rate() * DiscreteAccount::&lt;T&gt;::get() * 10;
 
-		// Calculate interest Interest = principal * rate * time
-		// We can use the `*` operator for multiplying a `Percent` by a u64
-		// because `Percent` implements the trait Mul&lt;u64&gt;
-		let interest = Self::discrete_interest_rate() * DiscreteAccount::get() * 10;
+			// The following line, although similar, does not work because
+			// u64 does not implement the trait Mul&lt;Percent&gt;
+			// let interest = DiscreteAccount::get() * Self::discrete_interest_rate() * 10;
 
-		// The following line, although similar, does not work because
-		// u64 does not implement the trait Mul&lt;Percent&gt;
-		// let interest = DiscreteAccount::get() * Self::discrete_interest_rate() * 10;
+			// Update the balance
+			let old_balance = DiscreteAccount::&lt;T&gt;::get();
+			DiscreteAccount::&lt;T&gt;::put(old_balance + interest);
 
-		// Update the balance
-		let old_balance = DiscreteAccount::get();
-		DiscreteAccount::put(old_balance + interest);
-
-		// Emit the event
-		Self::deposit_event(Event::DiscreteInterestApplied(interest));
+			// Emit the event
+			Self::deposit_event(Event::DiscreteInterestApplied(interest));
+		}
 	}
 }
 </code></pre>
@@ -2338,34 +2441,29 @@ pub struct ContinuousAccountData&lt;BlockNumber&gt; {
 intend to handle negative balances, there is currently a limitation in the transcendental functions
 that requires using signed types.</p>
 <p>With the struct to represent the account's state defined, we can initialize the storage value.</p>
-<pre><code class="language-rust  ignore">decl_storage! {
-	trait Store for Module&lt;T: Config&gt; as Example {
-		// --snip--
-
-		/// Balance for the continuously compounded account
-		ContinuousAccount get(fn balance_compound): ContinuousAccountData&lt;T::BlockNumber&gt;;
-	}
-}
+<pre><code class="language-rust  ignore">#[pallet::storage]
+#[pallet::getter(fn balance_compound)]
+pub(super) type ContinuousAccount&lt;T: Config&gt; =
+	StorageValue&lt;_, ContinuousAccountData&lt;T::BlockNumber&gt;, ValueQuery&gt;;
 </code></pre>
 <p>As before, there are two relevant extrinsics, <code>deposit_continuous</code> and <code>withdraw_continuous</code>. They
 are nearly identical so we'll only show one.</p>
-<pre><code class="language-rust  ignore">fn deposit_continuous(origin, val_to_add: u64) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+fn deposit_continuous(origin: OriginFor&lt;T&gt;, val_to_add: u64) -&gt; DispatchResultWithPostInfo {
 	ensure_signed(origin)?;
 
-	let current_block = system::Module::&lt;T&gt;::block_number();
+	let current_block = frame_system::Module::&lt;T&gt;::block_number();
 	let old_value = Self::value_of_continuous_account(&amp;current_block);
 
 	// Update storage for compounding account
-	ContinuousAccount::&lt;T&gt;::put(
-		ContinuousAccountData {
-			principal: old_value + I32F32::from_num(val_to_add),
-			deposit_date: current_block,
-		}
-	);
+	ContinuousAccount::&lt;T&gt;::put(ContinuousAccountData {
+		principal: old_value + I32F32::from_num(val_to_add),
+		deposit_date: current_block,
+	});
 
 	// Emit event
 	Self::deposit_event(Event::DepositedContinuous(val_to_add));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <p>This function itself isn't too insightful. It does the same basic things as the discrete variant:
@@ -3261,28 +3359,36 @@ pub trait Config: frame_system::Config {
 </code></pre>
 <p>To lock or unlock some quantity of funds, it is sufficient to invoke <code>reserve</code> and <code>unreserve</code>
 respectively</p>
-<pre><code class="language-rust  ignore">pub fn reserve_funds(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
-	let locker = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn reserve_funds(
+	origin: OriginFor&lt;T&gt;,
+	amount: BalanceOf&lt;T&gt;,
+	) -&gt; DispatchResultWithPostInfo {
+		let locker = ensure_signed(origin)?;
 
-	T::Currency::reserve(&amp;locker, amount)
+		T::Currency::reserve(&amp;locker, amount)
 			.map_err(|_| &quot;locker can't afford to lock the amount requested&quot;)?;
 
-	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
 
-	Self::deposit_event(RawEvent::LockFunds(locker, amount, now));
-	Ok(())
+		Self::deposit_event(Event::LockFunds(locker, amount, now));
+		Ok(().into())
 }
 </code></pre>
-<pre><code class="language-rust  ignore">pub fn unreserve_funds(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
-	let unlocker = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn unreserve_funds(
+	origin: OriginFor&lt;T&gt;,
+	amount: BalanceOf&lt;T&gt;,
+	) -&gt; DispatchResultWithPostInfo {
+		let unlocker = ensure_signed(origin)?;
 
-	T::Currency::unreserve(&amp;unlocker, amount);
-	// ReservableCurrency::unreserve does not fail (it will lock up as much as amount)
+		T::Currency::unreserve(&amp;unlocker, amount);
+		// ReservableCurrency::unreserve does not fail (it will lock up as much as amount)
 
-	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
 
-	Self::deposit_event(RawEvent::UnlockFunds(unlocker, amount, now));
-	Ok(())
+		Self::deposit_event(Event::UnlockFunds(unlocker, amount, now));
+		Ok(().into())
 }
 </code></pre>
 <h2 id="lockable-currency"><a class="header" href="#lockable-currency">Lockable Currency</a></h2>
@@ -3299,7 +3405,8 @@ resources. Import this trait in the usual way</p>
 </code></pre>
 <p>By using this <code>EXAMPLE_ID</code>, it is straightforward to define logic within the runtime to schedule
 locking, unlocking, and extending existing locks.</p>
-<pre><code class="language-rust  ignore">fn lock_capital(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+fn lock_capital(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let user = ensure_signed(origin)?;
 
 	T::Currency::set_lock(
@@ -3310,7 +3417,7 @@ locking, unlocking, and extending existing locks.</p>
 	);
 
 	Self::deposit_event(RawEvent::Locked(user, amount));
-	Ok(())
+	Ok(().into())
 }
 </code></pre>
 <h2 id="imbalances-1"><a class="header" href="#imbalances-1">Imbalances</a></h2>
@@ -3321,7 +3428,8 @@ transitions that adjust the total supply of the <code>Currency</code> type in qu
 <p>To manage this supply adjustment, the
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.OnUnbalanced.html"><code>OnUnbalanced</code></a> handler is
 often used. An example might look something like</p>
-<pre><code class="language-rust  ignore">pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
+<pre><code class="language-rust  ignore">#[weight = 10_000]
+pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
 	let _ = ensure_signed(origin)?;
 
 	let mut total_imbalance = &lt;PositiveImbalanceOf&lt;T&gt;&gt;::zero();
@@ -3353,7 +3461,8 @@ is used when tokens are burned or minted. In order to execute <code>imbalance</c
 In this pallet a specific amount of funds will be slashed from an account and award a specific
 amount of funds to said specific account.</p>
 <h2 id="slash-funds"><a class="header" href="#slash-funds">Slash funds</a></h2>
-<pre><code class="language-rust  ignore">pub fn slash_funds(origin, to_punish: T::AccountId, collateral: BalanceOf&lt;T&gt;) {
+<pre><code class="language-rust  ignore">#[weight = 10_000]
+pub fn slash_funds(origin, to_punish: T::AccountId, collateral: BalanceOf&lt;T&gt;) {
     let _ = ensure_signed(origin)?;
 
     let imbalance = T::Currency::slash_reserved(&amp;to_punish, collateral).0;
@@ -3364,8 +3473,8 @@ amount of funds to said specific account.</p>
 }
 </code></pre>
 <h2 id="reward-funds"><a class="header" href="#reward-funds">Reward funds</a></h2>
-<pre><code class="language-rust  ignore">pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
-
+<pre><code class="language-rust  ignore">#[weight = 10_000]
+pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
     let _ = ensure_signed(origin)?;
 
     let mut total_imbalance = &lt;PositiveImbalanceOf&lt;T&gt;&gt;::zero();
@@ -3439,7 +3548,8 @@ sources is not necessary in practice.</p>
 <h2 id="consuming-randomness"><a class="header" href="#consuming-randomness">Consuming Randomness</a></h2>
 <p>Calling the randomness source from Rust code is straightforward. Our <code>consume_randomness</code> extrinsic
 demonstrates consuming the raw random seed as well as a context-augmented random value. Try submitting the same extrinsic twice in the same block. The raw seed should be the same each time.</p>
-<pre><code class="language-rust  ignore">fn consume_randomness(origin) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
+pub fn consume_randomness(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let _ = ensure_signed(origin)?;
 
 	// Using a subject is recommended to prevent accidental re-use of the seed
@@ -3450,8 +3560,7 @@ demonstrates consuming the raw random seed as well as a context-augmented random
 	let random_result = T::RandomnessSource::random(&amp;subject);
 
 	Self::deposit_event(Event::RandomnessConsumed(random_seed, random_result));
-	Ok(())
-}
+	Ok(().into())
 }
 </code></pre>
 <h2 id="collective-coin-flipping"><a class="header" href="#collective-coin-flipping">Collective Coin Flipping</a></h2>
@@ -3529,18 +3638,19 @@ corresponds to a member of the permissioned set.</p>
 <p>The loosely coupled variant looks like this.</p>
 <pre><code class="language-rust  ignore">/// Checks whether the caller is a member of the set of Account Ids provided by the
 /// MembershipSource type. Emits an event if they are, and errors if not.
-fn check_membership(origin) -&gt; DispatchResult {
+#[pallet::weight(10_000)]
+pub fn check_membership(origin: OriginFor&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 	let caller = ensure_signed(origin)?;
 
-	// Get the members from the vec-set pallet
+	// Get the members from the `vec-set` pallet
 	let members = T::MembershipSource::accounts();
 
 	// Check whether the caller is a member
 	ensure!(members.contains(&amp;caller), Error::&lt;T&gt;::NotAMember);
 
 	// If the previous call didn't error, then the caller is a member, so emit the event
-	Self::deposit_event(RawEvent::IsAMember(caller));
-	Ok(())
+	Self::deposit_event(Event::IsAMember(caller));
+	Ok(().into())
 }
 </code></pre>
 <h2 id="coupling-pallets"><a class="header" href="#coupling-pallets">Coupling Pallets</a></h2>

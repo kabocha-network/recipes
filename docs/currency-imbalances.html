@@ -156,7 +156,8 @@ is used when tokens are burned or minted. In order to execute <code>imbalance</c
 In this pallet a specific amount of funds will be slashed from an account and award a specific
 amount of funds to said specific account.</p>
 <h2 id="slash-funds"><a class="header" href="#slash-funds">Slash funds</a></h2>
-<pre><code class="language-rust  ignore">pub fn slash_funds(origin, to_punish: T::AccountId, collateral: BalanceOf&lt;T&gt;) {
+<pre><code class="language-rust  ignore">#[weight = 10_000]
+pub fn slash_funds(origin, to_punish: T::AccountId, collateral: BalanceOf&lt;T&gt;) {
     let _ = ensure_signed(origin)?;
 
     let imbalance = T::Currency::slash_reserved(&amp;to_punish, collateral).0;
@@ -167,8 +168,8 @@ amount of funds to said specific account.</p>
 }
 </code></pre>
 <h2 id="reward-funds"><a class="header" href="#reward-funds">Reward funds</a></h2>
-<pre><code class="language-rust  ignore">pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
-
+<pre><code class="language-rust  ignore">#[weight = 10_000]
+pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
     let _ = ensure_signed(origin)?;
 
     let mut total_imbalance = &lt;PositiveImbalanceOf&lt;T&gt;&gt;::zero();

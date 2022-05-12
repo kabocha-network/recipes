@@ -155,10 +155,11 @@ to store a mapping from keys to values, similar to Rust's own
 <a href="https://doc.rust-lang.org/std/collections/struct.HashMap.html"><code>HashMap</code></a>.</p>
 <h2 id="declaring-a-storagemap"><a class="header" href="#declaring-a-storagemap">Declaring a <code>StorageMap</code></a></h2>
 <p>We declare a single storage map with the following syntax:</p>
-<pre><code class="language-rust  ignore">#[pallet::storage]
-#[pallet::getter(fn simple_map)]
-	pub(super) type SimpleMap&lt;T: Config&gt; =
-	StorageMap&lt;_, Blake2_128Concat, T::AccountId, u32, ValueQuery&gt;;
+<pre><code class="language-rust  ignore">decl_storage! {
+	trait Store for Module&lt;T: Config&gt; as SimpleMap {
+		SimpleMap get(fn simple_map): map hasher(blake2_128_concat) T::AccountId =&gt; u32;
+	}
+}
 </code></pre>
 <p>Much of this should look familiar to you from storage values. Reading the line from left to right we
 have:</p>

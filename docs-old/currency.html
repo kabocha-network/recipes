@@ -206,36 +206,28 @@ pub trait Config: frame_system::Config {
 </code></pre>
 <p>To lock or unlock some quantity of funds, it is sufficient to invoke <code>reserve</code> and <code>unreserve</code>
 respectively</p>
-<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
-pub fn reserve_funds(
-	origin: OriginFor&lt;T&gt;,
-	amount: BalanceOf&lt;T&gt;,
-	) -&gt; DispatchResultWithPostInfo {
-		let locker = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">pub fn reserve_funds(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
+	let locker = ensure_signed(origin)?;
 
-		T::Currency::reserve(&amp;locker, amount)
+	T::Currency::reserve(&amp;locker, amount)
 			.map_err(|_| &quot;locker can't afford to lock the amount requested&quot;)?;
 
-		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
 
-		Self::deposit_event(Event::LockFunds(locker, amount, now));
-		Ok(().into())
+	Self::deposit_event(RawEvent::LockFunds(locker, amount, now));
+	Ok(())
 }
 </code></pre>
-<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
-pub fn unreserve_funds(
-	origin: OriginFor&lt;T&gt;,
-	amount: BalanceOf&lt;T&gt;,
-	) -&gt; DispatchResultWithPostInfo {
-		let unlocker = ensure_signed(origin)?;
+<pre><code class="language-rust  ignore">pub fn unreserve_funds(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
+	let unlocker = ensure_signed(origin)?;
 
-		T::Currency::unreserve(&amp;unlocker, amount);
-		// ReservableCurrency::unreserve does not fail (it will lock up as much as amount)
+	T::Currency::unreserve(&amp;unlocker, amount);
+	// ReservableCurrency::unreserve does not fail (it will lock up as much as amount)
 
-		let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
+	let now = &lt;frame_system::Module&lt;T&gt;&gt;::block_number();
 
-		Self::deposit_event(Event::UnlockFunds(unlocker, amount, now));
-		Ok(().into())
+	Self::deposit_event(RawEvent::UnlockFunds(unlocker, amount, now));
+	Ok(())
 }
 </code></pre>
 <h2 id="lockable-currency"><a class="header" href="#lockable-currency">Lockable Currency</a></h2>
@@ -252,8 +244,7 @@ resources. Import this trait in the usual way</p>
 </code></pre>
 <p>By using this <code>EXAMPLE_ID</code>, it is straightforward to define logic within the runtime to schedule
 locking, unlocking, and extending existing locks.</p>
-<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
-fn lock_capital(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
+<pre><code class="language-rust  ignore">fn lock_capital(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResult {
 	let user = ensure_signed(origin)?;
 
 	T::Currency::set_lock(
@@ -264,7 +255,7 @@ fn lock_capital(origin, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResultWithPost
 	);
 
 	Self::deposit_event(RawEvent::Locked(user, amount));
-	Ok(().into())
+	Ok(())
 }
 </code></pre>
 <h2 id="imbalances"><a class="header" href="#imbalances">Imbalances</a></h2>
@@ -275,8 +266,7 @@ transitions that adjust the total supply of the <code>Currency</code> type in qu
 <p>To manage this supply adjustment, the
 <a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/traits/trait.OnUnbalanced.html"><code>OnUnbalanced</code></a> handler is
 often used. An example might look something like</p>
-<pre><code class="language-rust  ignore">#[weight = 10_000]
-pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
+<pre><code class="language-rust  ignore">pub fn reward_funds(origin, to_reward: T::AccountId, reward: BalanceOf&lt;T&gt;) {
 	let _ = ensure_signed(origin)?;
 
 	let mut total_imbalance = &lt;PositiveImbalanceOf&lt;T&gt;&gt;::zero();

@@ -196,33 +196,26 @@ type. When using a generic struct, we must supply all of the generic type parame
 shows how to supply thos parameters when you have a type alias (like we do for <code>InnerThing</code>) as well
 as when you don't. Whether to include the type alias is a matter of style and taste, but it is
 generally preferred when the entire type exceeds the preferred line length.</p>
-<pre><code class="language-rust  ignore">#[pallet::storage]
-#[pallet::getter(fn inner_things_by_numbers)]
-pub(super) type InnerThingsByNumbers&lt;T&gt; =
-		StorageMap&lt;_, Blake2_128Concat, u32, InnerThingOf&lt;T&gt;, ValueQuery&gt;;
-
-#[pallet::storage]
-#[pallet::getter(fn super_things_by_super_numbers)]
-pub(super) type SuperThingsBySuperNumbers&lt;T: Config&gt; =
-		StorageMap&lt;_, Blake2_128Concat, u32, SuperThing&lt;T::Hash, T::Balance&gt;, ValueQuery&gt;;
+<pre><code class="language-rust  ignore">decl_storage! {
+	trait Store for Module&lt;T: Config&gt; as NestedStructs {
+		InnerThingsByNumbers get(fn inner_things_by_numbers):
+			map hasher(blake2_128_concat) u32 =&gt; InnerThingOf&lt;T&gt;;
+		SuperThingsBySuperNumbers get(fn super_things_by_super_numbers):
+			map hasher(blake2_256) u32 =&gt; SuperThing&lt;T::Hash, T::Balance&gt;;
+	}
+}
 </code></pre>
 <p>Interacting with the storage maps is now exactly as it was when we didn't use any custom structs</p>
-<pre><code class="language-rust  ignore">#[pallet::weight(10_000)]
-pub fn insert_inner_thing(
-	origin: OriginFor&lt;T&gt;,
-	number: u32,
-	hash: T::Hash,
-	balance: T::Balance,
-	) -&gt; DispatchResultWithPostInfo {
-		let _ = ensure_signed(origin)?;
-		let thing = InnerThing {
-			number,
-			hash,
-			balance,
-		};
-		&lt;InnerThingsByNumbers&lt;T&gt;&gt;::insert(number, thing);
-		Self::deposit_event(Event::NewInnerThing(number, hash, balance));
-		Ok(().into())
+<pre><code class="language-rust  ignore">fn insert_inner_thing(origin, number: u32, hash: T::Hash, balance: T::Balance) -&gt; DispatchResult {
+	let _ = ensure_signed(origin)?;
+	let thing = InnerThing {
+					number,
+					hash,
+					balance,
+				};
+	&lt;InnerThingsByNumbers&lt;T&gt;&gt;::insert(number, thing);
+	Self::deposit_event(RawEvent::NewInnerThing(number, hash, balance));
+	Ok(())
 }
 </code></pre>
 <h2 id="nested-structs"><a class="header" href="#nested-structs">Nested Structs</a></h2>

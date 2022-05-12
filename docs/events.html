@@ -168,46 +168,47 @@ syntax is a bit complex, it is the same every time. If you are a skilled Rust pr
 recognize this as a series of <a href="https://doc.rust-lang.org/book/ch10-02-traits.html">trait bounds</a>. If
 you don't recognize this feature of Rust yet, don't worry; it is the same every time, so you can
 just copy it and move on.</p>
-<pre><code class="language-rust  ignore">pub trait Config: frame_system::Config {
-	type Event: From&lt;Event&gt; + Into&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
+<pre><code class="language-rust  ignore">#[pallet::config]
+pub trait Config: frame_system::Config {
+	/// Because this pallet emits events, it depends on the runtime's definition of an event.
+	type Event: From&lt;Event&lt;Self&gt;&gt; + IsType&lt;&lt;Self as frame_system::Config&gt;::Event&gt;;
 }
 </code></pre>
-<p>Next we have to add a line inside of the <code>decl_module!</code> macro which generates the <code>deposit_event</code>
+<p>Next we have to add a line of the <code>#[pallet::generate_deposit(pub(super) fn deposit_event)]</code> macro which generates the <code>deposit_event</code>
 function we'll use later when emitting our events. Even experienced Rust programmers will not
 recognize this syntax because it is unique to this macro. Just copy it each time.</p>
-<pre><code class="language-rust  ignore">decl_module! {
-	pub struct Module&lt;T: Config&gt; for enum Call where origin: T::Origin {
-
-		// This line is new
-		fn deposit_event() = default;
-
-		// --snip--
-	}
+<pre><code class="language-rust  ignore">#[pallet::event]
+#[pallet::metadata(T::AccountId = &quot;AccountId&quot;)]
+#[pallet::generate_deposit(pub(super) fn deposit_event)]
+pub enum Event&lt;T: Config&gt; {
+	/// Event documentation should end with an array that provides descriptive names for event
+	/// parameters. [something, who]
+	EmitInput(u32),
 }
 </code></pre>
 <h2 id="declaring-events"><a class="header" href="#declaring-events">Declaring Events</a></h2>
 <p>To declare an event, use the
-<a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/macro.decl_event.html"><code>decl_event!</code> macro</a>. Like any rust
+<a href="https://substrate.dev/rustdocs/v3.0.0/frame_support/macro.decl_event.html"><code>#[pallet::event]</code> macro</a>. Like any rust
 enum, Events have names and can optionally carry data with them. The syntax is slightly different
 depending on whether the events carry data of primitive types, or generic types from the pallet's
 configuration trait. These two techniques are demonstrated in the <code>simple-event</code> and <code>generic-event</code>
 pallets respectively.</p>
 <h3 id="simple-events"><a class="header" href="#simple-events">Simple Events</a></h3>
 <p>The simplest example of an event uses the following syntax</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event {
-		EmitInput(u32),
-	}
-);
+<pre><code class="language-rust  ignore">#[pallet::event]
+#[pallet::metadata(u32 = &quot;Metadata&quot;)]
+pub enum Event&lt;T: Config&gt; {
+    /// Set a value.
+    ValueSet(u32, T::AccountId),
+}
 </code></pre>
 <h3 id="events-with-generic-types"><a class="header" href="#events-with-generic-types">Events with Generic Types</a></h3>
 <p>Sometimes, events might contain types from the pallet's Configuration Trait. In this case, it is necessary to
 specify additional syntax:</p>
-<pre><code class="language-rust  ignore">decl_event!(
-	pub enum Event&lt;T&gt; where AccountId = &lt;T as frame_system::Config&gt;::AccountId {
-		EmitInput(AccountId, u32),
-	}
-);
+<pre><code class="language-rust  ignore">#[pallet::event]
+pub enum Event&lt;T: Config&gt; {
+	EmitInput(u32),
+}
 </code></pre>
 <p>This example also demonstrates how the <code>where</code> clause can be used to specify type aliasing for more
 readable code.</p>
@@ -224,7 +225,7 @@ will have no events emitted.</p>
 <h3 id="events-with-generic-types-1"><a class="header" href="#events-with-generic-types-1">Events with Generic Types</a></h3>
 <p>The syntax for <code>deposit_event</code> now takes the <code>RawEvent</code> type because it is generic over the pallet's
 configuration trait.</p>
-<pre><code class="language-rust  ignore">Self::deposit_event(RawEvent::EmitInput(user, new_number));
+<pre><code class="language-rust  ignore">#[pallet::generate_deposit(pub(super) fn deposit_event)]
 </code></pre>
 <h2 id="constructing-the-runtime"><a class="header" href="#constructing-the-runtime">Constructing the Runtime</a></h2>
 <p>For the first time in the recipes, our pallet has an associated type in its configuration trait. We

@@ -188,16 +188,18 @@ impl&lt;T: Config&gt; Module&lt;T&gt; {
 <h2 id="donations"><a class="header" href="#donations">Donations</a></h2>
 <p>The first and perhaps more familiar way is through charitable donations. Donations can be made
 through a standard <code>donate</code> extrinsic which accepts the amount to be donated as a parameter.</p>
-<pre><code class="language-rust  ignore">fn donate(
-		origin,
-		amount: BalanceOf&lt;T&gt;
-) -&gt; DispatchResult {
+<pre><code class="language-rust  ignore">#[pallet::call]
+impl&lt;T: Config&gt; Pallet&lt;T&gt; {
+	/// Donate some funds to the charity
+	#[pallet::weight(10_000)]
+	pub fn donate(origin: OriginFor&lt;T&gt;, amount: BalanceOf&lt;T&gt;) -&gt; DispatchResultWithPostInfo {
 		let donor = ensure_signed(origin)?;
 
-		let _ = T::Currency::transfer(&amp;donor, &amp;Self::account_id(), amount, AllowDeath);
+		T::Currency::transfer(&amp;donor, &amp;Self::account_id(), amount, AllowDeath)
+			.map_err(|_| DispatchError::Other(&quot;Can't make donation&quot;))?;
 
-		Self::deposit_event(RawEvent::DonationReceived(donor, amount, Self::pot()));
-		Ok(())
+			Self::deposit_event(Event::DonationReceived(donor, amount, Self::pot()));
+			Ok(().into())
 }
 </code></pre>
 <h2 id="imbalances"><a class="header" href="#imbalances">Imbalances</a></h2>
